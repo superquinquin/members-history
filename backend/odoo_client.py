@@ -29,11 +29,30 @@ class OdooClient:
         
         if self.models is None:
             raise Exception("Models proxy not initialized")
-            
+        
         return self.models.execute_kw(
             self.db, self.uid, self.password,
-            model, method, args, kwargs
+            model, method, list(args), kwargs
         )
 
     def search_read(self, model: str, domain: List, fields: List[str]) -> List[Dict]:
-        return self.execute(model, 'search_read', domain, {'fields': fields})
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+        
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+        
+        return self.models.execute_kw(
+            self.db, self.uid, self.password,
+            model, 'search_read',
+            [domain],
+            {'fields': fields}
+        )
+
+    def search_members_by_name(self, name: str) -> List[Dict]:
+        domain = [('name', 'ilike', name)]
+        fields = ['id', 'name', 'street', 'street2', 'city', 'zip', 'phone', 'mobile', 'email']
+        results = self.search_read('res.partner', domain, fields)
+        print(f"Odoo search results for '{name}': {results}")
+        return results
