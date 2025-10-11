@@ -63,11 +63,13 @@ def search_members():
             ]
             address = ', '.join(filter(None, address_parts))
             
+            image = member.get('image_small') or member.get('image_medium') or member.get('image')
             result.append({
                 'id': member.get('id'),
                 'name': member.get('name'),
                 'address': address if address else None,
                 'phone': member.get('phone') or member.get('mobile') or None,
+                'image': image if image else None,
                 'raw': member
             })
         

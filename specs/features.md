@@ -105,7 +105,8 @@ Search for cooperative members by name with real-time results from the Odoo back
 
 **Features:**
 - Case-insensitive partial name matching
-- Display member details: name, address, phone
+- Display member details: name, address, phone, profile picture
+- Profile picture display with fallback
 - Click to select member for detailed history view
 - Loading states and error handling
 - Empty state guidance
@@ -118,11 +119,34 @@ Search for cooperative members by name with real-time results from the Odoo back
       "id": 267,
       "name": "NIVET, Rémi",
       "address": "233 rue nationale, 59800, Lille",
-      "phone": "06 79 46 09 36"
+      "phone": "06 79 46 09 36",
+      "image": "base64_encoded_string_or_null"
     }
   ]
 }
 ```
+
+### Profile Pictures
+
+**Implementation:**
+- Profile pictures are fetched from Odoo `res.partner` model fields: `image_small`, `image_medium`, or `image`
+- Images are base64-encoded JPEG/PNG data
+- Frontend displays images as circular avatars (64x64px) with border styling
+- **Fallback:** When no image is available, displays gradient circle with member initials
+  - Initials extracted from name (e.g., "NIVET, Rémi" → "NR")
+  - Gradient background: purple-to-pink matching app theme
+
+**Backend Fields:**
+- `backend/odoo_client.py:55` requests `image`, `image_small`, and `image_medium` fields
+- `backend/app.py:66-71` prioritizes `image_small` for performance, falls back to `image_medium` or `image`
+- Returns base64 string in `image` field of API response
+
+**Frontend Display:**
+- `frontend/src/App.jsx` helper functions:
+  - `getImageSrc(imageData)` - Converts base64 to data URL (`data:image/png;base64,{data}`)
+  - `getInitials(name)` - Extracts initials for fallback avatar
+- Circular avatar styling with responsive layout
+- Consistent sizing and border matching app theme
 
 ## Member History (Coming Soon)
 

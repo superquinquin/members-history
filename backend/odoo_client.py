@@ -52,7 +52,7 @@ class OdooClient:
 
     def search_members_by_name(self, name: str) -> List[Dict]:
         domain = [('name', 'ilike', name)]
-        fields = ['id', 'name', 'street', 'street2', 'city', 'zip', 'phone', 'mobile', 'email']
+        fields = ['id', 'name', 'street', 'street2', 'city', 'zip', 'phone', 'mobile', 'email', 'image', 'image_small', 'image_medium']
         results = self.search_read('res.partner', domain, fields)
         print(f"Odoo search results for '{name}': {results}")
         return results

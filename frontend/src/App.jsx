@@ -45,6 +45,26 @@ function App() {
     setSelectedMember(member)
   }
 
+  const getImageSrc = (imageData) => {
+    if (imageData && imageData !== false) {
+      return `data:image/png;base64,${imageData}`
+    }
+    return null
+  }
+
+  const getInitials = (name) => {
+    if (!name) return '?'
+    const parts = name.split(',').map(p => p.trim())
+    if (parts.length >= 2) {
+      return parts[0][0] + parts[1][0]
+    }
+    const words = name.split(' ')
+    if (words.length >= 2) {
+      return words[0][0] + words[1][0]
+    }
+    return name[0]
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
       <header className="bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 shadow-lg">
@@ -115,19 +135,36 @@ function App() {
                           : 'bg-white border-2 border-purple-200 hover:border-purple-300'
                       }`}
                     >
-                      <div className="font-bold text-gray-900 text-lg mb-2 flex items-center gap-2">
-                        👤 {member.name}
+                      <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0">
+                          {getImageSrc(member.image) ? (
+                            <img
+                              src={getImageSrc(member.image)}
+                              alt={member.name}
+                              className="w-16 h-16 rounded-full object-cover border-2 border-purple-300 shadow-md"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-xl border-2 border-purple-300 shadow-md">
+                              {getInitials(member.name)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-gray-900 text-lg mb-2">
+                            {member.name}
+                          </div>
+                          {member.address && (
+                            <div className="text-sm text-gray-600 mb-1 flex items-center gap-2">
+                              📍 {member.address}
+                            </div>
+                          )}
+                          {member.phone && (
+                            <div className="text-sm text-gray-600 flex items-center gap-2">
+                              📞 {member.phone}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      {member.address && (
-                        <div className="text-sm text-gray-600 mb-1 flex items-center gap-2">
-                          📍 {member.address}
-                        </div>
-                      )}
-                      {member.phone && (
-                        <div className="text-sm text-gray-600 flex items-center gap-2">
-                          📞 {member.phone}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
