@@ -104,7 +104,7 @@ class OdooClient:
         
         shifts = {}
         if shift_ids:
-            shift_fields = ['id', 'name', 'date_begin']
+            shift_fields = ['id', 'name', 'date_begin', 'week_number', 'week_name']
             shift_results = self.models.execute_kw(
                 self.db, self.uid, self.password,
                 'shift.shift', 'read',
@@ -117,8 +117,12 @@ class OdooClient:
             shift_id = registration['shift_id'][0] if isinstance(registration.get('shift_id'), list) else registration.get('shift_id')
             if shift_id and shift_id in shifts:
                 registration['shift_name'] = shifts[shift_id]['name']
+                registration['week_number'] = shifts[shift_id].get('week_number')
+                registration['week_name'] = shifts[shift_id].get('week_name')
             else:
                 registration['shift_name'] = None
+                registration['week_number'] = None
+                registration['week_name'] = None
         
         print(f"Shift history for partner {partner_id}: {len(results)} registrations")
         return results

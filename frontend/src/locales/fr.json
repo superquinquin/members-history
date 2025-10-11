@@ -33,7 +33,8 @@
     "shiftMissed": "Absence au Créneau",
     "shiftExcused": "Absence Excusée",
     "shiftLate": "Retard",
-    "shiftName": "Créneau"
+    "shiftName": "Créneau",
+    "week": "Semaine"
   },
   "error": {
     "label": "Erreur :"

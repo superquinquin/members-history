@@ -225,29 +225,52 @@ Shows member participation in cooperative work shifts.
 - Event cards with type-specific icons and colors
 - Date formatting: Always displays real dates (e.g., "Oct 4, 2025" or "4 oct. 2025")
   - Uses `Intl.DateTimeFormat` for locale-aware formatting
-- Events sorted by date (newest to oldest)
+- Events grouped by ISO week with visual week zones
 - Mixed event types displayed in chronological order
 - Loading, error, and empty states
 - Fully internationalized (EN/FR)
 
+**Week Cycle Display:**
+- Events grouped into 4-week shift cycle zones (A, B, C, D)
+- Each week zone has:
+  - **Color-coded background** (60% opacity, gradient stronger on left):
+    - Week A: Blue (`from-blue-50 to-blue-100`)
+    - Week B: Green (`from-green-50 to-green-100`)
+    - Week C: Yellow (`from-yellow-50 to-yellow-100`)
+    - Week D: Purple (`from-purple-50 to-purple-100`)
+  - **Week label** showing ISO week number and cycle letter
+  - **Rounded corners** for visual separation
+- Week letter extracted from shift events (`shift.shift.week_name`)
+- ISO 8601 week calculation for grouping events
+- Flexbox 3-column layout:
+  1. Week label column (fixed width, right-aligned)
+  2. Timeline gutter (vertical line and event icons)
+  3. Event cards column (flexible width)
+
 **Frontend Components:**
 - `frontend/src/App.jsx`:
   - Timeline rendering with event cards
-  - `formatDate()` helper for locale-aware date display
+  - `formatDate()` - Locale-aware date display
+  - `getISOWeek()` - Calculates ISO 8601 week number
+  - `groupEventsByWeek()` - Groups events by week, extracts week letter
+  - `getWeekColor()` - Returns gradient classes for week zones
+  - `getWeekLabelColor()` - Returns text color for week labels
   - Dynamic icon and color based on event type and state
   - Automatic history fetch when member is selected
   - Conditional rendering of event-specific details
 
 **Styling:**
 - Purple-pink gradient theme throughout
-- Circular icon badges with type-specific gradients
+- Circular icon badges with type-specific gradients (8x8px)
 - White event cards with purple borders
+- Week zones with colored gradient backgrounds
 - Hover effects and shadows
-- Responsive layout
+- Responsive flexbox layout
+- Consistent spacing (`space-y-6` between events)
 
 **Backend Implementation:**
 - `backend/odoo_client.py`:
   - `get_member_purchase_history()` - Fetches POS orders
-  - `get_member_shift_history()` - Fetches shift registrations with shift details
+  - `get_member_shift_history()` - Fetches shift registrations with shift details and week metadata (`week_number`, `week_name`)
 - `backend/app.py`:
-  - `/api/member/<id>/history` - Combines and sorts all event types
+  - `/api/member/<id>/history` - Combines and sorts all event types, includes week metadata in shift events

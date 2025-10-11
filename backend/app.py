@@ -105,7 +105,9 @@ def get_member_history(member_id):
                     'date': shift.get('date_begin'),
                     'shift_name': shift.get('shift_name'),
                     'state': shift.get('state'),
-                    'is_late': shift.get('is_late', False)
+                    'is_late': shift.get('is_late', False),
+                    'week_number': shift.get('week_number'),
+                    'week_name': shift.get('week_name')
                 })
         
         events.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)

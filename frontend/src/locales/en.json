@@ -33,7 +33,8 @@
     "shiftMissed": "Shift Missed",
     "shiftExcused": "Shift Excused",
     "shiftLate": "Late",
-    "shiftName": "Shift"
+    "shiftName": "Shift",
+    "week": "Week"
   },
   "error": {
     "label": "Error:"

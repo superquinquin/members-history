@@ -96,6 +96,71 @@ function App() {
     }).format(date)
   }
 
+  const getISOWeek = (date) => {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7))
+    const yearStart = new Date(d.getFullYear(), 0, 1)
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
+    return weekNo
+  }
+
+  const groupEventsByWeek = (events) => {
+    const weeks = {}
+    
+    events.forEach(event => {
+      if (!event.date) return
+      
+      const date = new Date(event.date)
+      const weekNumber = getISOWeek(date)
+      const year = date.getFullYear()
+      const weekKey = `${year}-W${weekNumber}`
+      
+      if (!weeks[weekKey]) {
+        weeks[weekKey] = {
+          weekNumber,
+          year,
+          weekKey,
+          weekName: null,
+          events: []
+        }
+      }
+      
+      if (event.type === 'shift' && event.week_name && !weeks[weekKey].weekName) {
+        weeks[weekKey].weekName = event.week_name
+      }
+      
+      weeks[weekKey].events.push(event)
+    })
+    
+    return Object.values(weeks).sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year
+      return b.weekNumber - a.weekNumber
+    })
+  }
+
+  const getWeekColor = (weekName) => {
+    if (!weekName) return 'from-gray-50 to-slate-50'
+    const colors = {
+      'A': 'from-blue-50 to-blue-100',
+      'B': 'from-green-50 to-green-100',
+      'C': 'from-yellow-50 to-yellow-100',
+      'D': 'from-purple-50 to-purple-100'
+    }
+    return colors[weekName] || 'from-gray-50 to-slate-50'
+  }
+
+  const getWeekLabelColor = (weekName) => {
+    if (!weekName) return 'text-gray-500'
+    const colors = {
+      'A': 'text-blue-600',
+      'B': 'text-green-600',
+      'C': 'text-yellow-600',
+      'D': 'text-purple-600'
+    }
+    return colors[weekName] || 'text-gray-500'
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
       <header className="bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 shadow-lg">
@@ -222,66 +287,89 @@ function App() {
                   </div>
                 ) : historyEvents.length > 0 ? (
                   <div className="relative">
-                    <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
-                    
-                    {historyEvents.map((event) => {
-                      const getEventIcon = () => {
-                        if (event.type === 'purchase') return '🛒'
-                        if (event.type === 'shift' && event.state === 'done') return '🎯'
-                        if (event.type === 'shift' && event.state === 'absent') return '❌'
-                        if (event.type === 'shift' && event.state === 'excused') return '✓'
-                        return '📋'
-                      }
-                      
-                      const getEventBgColor = () => {
-                        if (event.type === 'purchase') return 'from-purple-500 to-pink-500'
-                        if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
-                        if (event.type === 'shift' && event.state === 'absent') return 'from-red-500 to-rose-500'
-                        if (event.type === 'shift' && event.state === 'excused') return 'from-blue-500 to-cyan-500'
-                        return 'from-gray-500 to-slate-500'
-                      }
-                      
-                      const getEventTitle = () => {
-                        if (event.type === 'purchase') return t('timeline.purchase')
-                        if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
-                        if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
-                        if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
-                        return event.type
-                      }
-                      
-                      return (
-                        <div key={`${event.type}-${event.id}`} className="relative pl-20 pb-8 last:pb-0">
-                          <div className={`absolute left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br ${getEventBgColor()} flex items-center justify-center text-white shadow-lg text-lg`}>
-                            {getEventIcon()}
+                    {groupEventsByWeek(historyEvents).map((weekGroup) => (
+                      <div key={weekGroup.weekKey} className="relative mb-6">
+                        <div className={`absolute inset-0 bg-gradient-to-l ${getWeekColor(weekGroup.weekName)} opacity-60 rounded-xl`} />
+                        
+                        <div className="relative flex gap-4 p-4">
+                          <div className="flex-shrink-0 w-16 text-right pt-2">
+                            <div className="text-xs font-semibold text-gray-500">
+                              {t('timeline.week')} {weekGroup.weekNumber}
+                            </div>
+                            {weekGroup.weekName && (
+                              <div className={`text-3xl font-bold ${getWeekLabelColor(weekGroup.weekName)} mt-1`}>
+                                {weekGroup.weekName}
+                              </div>
+                            )}
                           </div>
                           
-                          <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="font-semibold text-gray-900">{getEventTitle()}</span>
-                              <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
-                            </div>
-                            {event.type === 'purchase' && event.reference && (
-                              <div className="text-xs text-gray-500">
-                                {t('timeline.reference')}: {event.reference}
-                              </div>
-                            )}
-                            {event.type === 'shift' && (
-                              <div className="text-sm text-gray-700 mt-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium">{t('timeline.shiftName')}:</span>
-                                  <span>{event.shift_name || 'N/A'}</span>
-                                </div>
-                                {event.is_late && (
-                                  <div className="mt-1 text-xs text-orange-600 font-medium">
-                                    ⏰ {t('timeline.shiftLate')}
+                          <div className="relative flex-1">
+                            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
+                            
+                            <div className="pl-12 space-y-6">
+                              {weekGroup.events.map((event) => {
+                                const getEventIcon = () => {
+                                  if (event.type === 'purchase') return '🛒'
+                                  if (event.type === 'shift' && event.state === 'done') return '🎯'
+                                  if (event.type === 'shift' && event.state === 'absent') return '❌'
+                                  if (event.type === 'shift' && event.state === 'excused') return '✓'
+                                  return '📋'
+                                }
+                                
+                                const getEventBgColor = () => {
+                                  if (event.type === 'purchase') return 'from-purple-500 to-pink-500'
+                                  if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
+                                  if (event.type === 'shift' && event.state === 'absent') return 'from-red-500 to-rose-500'
+                                  if (event.type === 'shift' && event.state === 'excused') return 'from-blue-500 to-cyan-500'
+                                  return 'from-gray-500 to-slate-500'
+                                }
+                                
+                                const getEventTitle = () => {
+                                  if (event.type === 'purchase') return t('timeline.purchase')
+                                  if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
+                                  if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
+                                  if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
+                                  return event.type
+                                }
+                                
+                                return (
+                                  <div key={`${event.type}-${event.id}`} className="relative">
+                                    <div className={`absolute -left-12 top-1 w-8 h-8 rounded-full bg-gradient-to-br ${getEventBgColor()} flex items-center justify-center text-white shadow-lg text-lg z-10`}>
+                                      {getEventIcon()}
+                                    </div>
+                                    
+                                    <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
+                                      <div className="flex justify-between items-center mb-2">
+                                        <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                                        <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
+                                      </div>
+                                      {event.type === 'purchase' && event.reference && (
+                                        <div className="text-xs text-gray-500">
+                                          {t('timeline.reference')}: {event.reference}
+                                        </div>
+                                      )}
+                                      {event.type === 'shift' && (
+                                        <div className="text-sm text-gray-700 mt-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-medium">{t('timeline.shiftName')}:</span>
+                                            <span>{event.shift_name || 'N/A'}</span>
+                                          </div>
+                                          {event.is_late && (
+                                            <div className="mt-1 text-xs text-orange-600 font-medium">
+                                              ⏰ {t('timeline.shiftLate')}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                )
+                              })}
+                            </div>
                           </div>
                         </div>
-                      )
-                    })}
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-purple-50 rounded-xl border-2 border-dashed border-gray-300">
