@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Superquinquin",
+    "subtitle": "Member History Portal"
+  },
+  "search": {
+    "label": "Search Members",
+    "placeholder": "Enter member name...",
+    "button": "Search",
+    "searching": "Searching..."
+  },
+  "results": {
+    "title": "Search Results",
+    "count": "{{count}} result(s)",
+    "noResults": "No members found",
+    "noResultsHint": "Try searching with a different name",
+    "startSearching": "Start by searching for a member",
+    "startSearchingHint": "Enter a name in the search box above"
+  },
+  "history": {
+    "title": "History for {{name}}",
+    "memberId": "Member ID:",
+    "comingSoon": "History feature coming soon",
+    "comingSoonDetails": "We're working on bringing you detailed member history"
+  },
+  "error": {
+    "label": "Error:"
+  },
+  "language": {
+    "switch": "Switch language",
+    "en": "English",
+    "fr": "Français"
+  }
+}
