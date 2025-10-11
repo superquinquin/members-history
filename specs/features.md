@@ -225,36 +225,35 @@ Shows member participation in cooperative work shifts.
 - Event cards with type-specific icons and colors
 - Date formatting: Always displays real dates (e.g., "Oct 4, 2025" or "4 oct. 2025")
   - Uses `Intl.DateTimeFormat` for locale-aware formatting
-- Events grouped by ISO week with visual week zones
+  - Short format (without year) for cycle date ranges
+- Events grouped by 4-week cycles, then by weeks within cycles
+- Events ordered newest first (both globally and within cycles)
 - Mixed event types displayed in chronological order
 - Loading, error, and empty states
 - Fully internationalized (EN/FR)
 
-**Week Cycle Display:**
-- Events grouped into 4-week shift cycle zones (A, B, C, D)
-- Each week zone has:
-  - **Color-coded background** (60% opacity, gradient stronger on left):
-    - Week A: Blue (`from-blue-50 to-blue-100`)
-    - Week B: Green (`from-green-50 to-green-100`)
-    - Week C: Yellow (`from-yellow-50 to-yellow-100`)
-    - Week D: Purple (`from-purple-50 to-purple-100`)
-  - **Week label** showing ISO week number and cycle letter
-  - **Rounded corners** for visual separation
-- Week letter extracted from shift events (`shift.shift.week_name`)
-- ISO 8601 week calculation for grouping events
+**Cycle-Based Display:**
+- Events organized by 4-week shift cycles using `data/cycles_2025.json`
+- Each cycle has:
+  - **Unified gray background** (50% opacity, gradient from gray-50 to gray-100)
+  - **Cycle header** showing cycle number and date range (without year)
+  - **Week sections** within cycle (A, B, C, D) ordered newest first
+  - **Visual breaks** in timeline line between weeks
+- Week letter determined from local calendar data for ALL event types
+- Independent of Odoo shift data
 - Flexbox 3-column layout:
-  1. Week label column (fixed width, right-aligned)
-  2. Timeline gutter (vertical line and event icons)
+  1. Cycle info column (fixed width 112px, right-aligned)
+  2. Week letter + timeline gutter (vertical line segments per week)
   3. Event cards column (flexible width)
 
 **Frontend Components:**
 - `frontend/src/App.jsx`:
-  - Timeline rendering with event cards
-  - `formatDate()` - Locale-aware date display
-  - `getISOWeek()` - Calculates ISO 8601 week number
-  - `groupEventsByWeek()` - Groups events by week, extracts week letter
-  - `getWeekColor()` - Returns gradient classes for week zones
-  - `getWeekLabelColor()` - Returns text color for week labels
+  - Timeline rendering with cycle-based grouping
+  - `formatDate()` - Full date display with year (for events)
+  - `formatDateShort()` - Date display without year (for cycle ranges)
+  - `getCycleAndWeekForDate()` - Maps dates to cycles/weeks from JSON
+  - `groupEventsByCycle()` - Organizes events by cycle then week
+  - `getWeekLabelColor()` - Returns text color for week letters (A=blue, B=green, C=yellow, D=purple)
   - Dynamic icon and color based on event type and state
   - Automatic history fetch when member is selected
   - Conditional rendering of event-specific details
@@ -263,10 +262,12 @@ Shows member participation in cooperative work shifts.
 - Purple-pink gradient theme throughout
 - Circular icon badges with type-specific gradients (8x8px)
 - White event cards with purple borders
-- Week zones with colored gradient backgrounds
+- Unified gray background per cycle (not per week)
+- Timeline line breaks between weeks for visual separation
+- Week letters color-coded and aligned with first event icon
 - Hover effects and shadows
 - Responsive flexbox layout
-- Consistent spacing (`space-y-6` between events)
+- Consistent spacing (`space-y-8` between weeks, `space-y-6` between events)
 
 **Backend Implementation:**
 - `backend/odoo_client.py`:

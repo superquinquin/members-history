@@ -97,6 +97,15 @@ function App() {
     }).format(date)
   }
 
+  const formatDateShort = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    return new Intl.DateTimeFormat(i18n.language, {
+      month: 'short',
+      day: 'numeric'
+    }).format(date)
+  }
+
   const getCycleAndWeekForDate = (dateString) => {
     if (!dateString) return null
     
@@ -300,27 +309,27 @@ function App() {
                         <div className="absolute inset-0 bg-gradient-to-l from-gray-50 to-gray-100 opacity-50 rounded-xl" />
                         
                         <div className="relative flex gap-4 p-4">
-                          <div className="flex-shrink-0 w-20 text-right pt-2">
+                          <div className="flex-shrink-0 w-28 text-right pt-2 pr-12">
                             <div className="text-sm font-bold text-gray-600">
                               {t('timeline.cycle')} {cycle.cycleNumber}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              {formatDate(cycle.startDate)}
+                              {formatDateShort(cycle.startDate)}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {formatDate(cycle.endDate)}
+                              {formatDateShort(cycle.endDate)}
                             </div>
                           </div>
                           
                           <div className="relative flex-1">
-                            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
-                            
                             <div className="pl-12 space-y-8">
                               {Object.values(cycle.weeks).sort((a, b) => 
-                                a.startDate.localeCompare(b.startDate)
+                                b.startDate.localeCompare(a.startDate)
                               ).map((week) => (
                                 <div key={week.weekLetter} className="relative">
-                                  <div className={`absolute -left-16 top-0 text-2xl font-bold ${getWeekLabelColor(week.weekLetter)}`}>
+                                  <div className="absolute -left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
+                                  
+                                  <div className={`absolute -left-24 top-1 text-2xl font-bold ${getWeekLabelColor(week.weekLetter)}`}>
                                     {week.weekLetter}
                                   </div>
                                   
