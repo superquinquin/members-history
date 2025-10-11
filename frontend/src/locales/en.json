@@ -34,7 +34,8 @@
     "shiftExcused": "Shift Excused",
     "shiftLate": "Late",
     "shiftName": "Shift",
-    "week": "Week"
+    "week": "Week",
+    "cycle": "Cycle"
   },
   "error": {
     "label": "Error:"

@@ -34,7 +34,8 @@
     "shiftExcused": "Absence Excusée",
     "shiftLate": "Retard",
     "shiftName": "Créneau",
-    "week": "Semaine"
+    "week": "Semaine",
+    "cycle": "Cycle"
   },
   "error": {
     "label": "Erreur :"

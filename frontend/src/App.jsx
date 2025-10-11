@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import cyclesData from '../../data/cycles_2025.json'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -96,58 +97,65 @@ function App() {
     }).format(date)
   }
 
-  const getISOWeek = (date) => {
-    const d = new Date(date)
-    d.setHours(0, 0, 0, 0)
-    d.setDate(d.getDate() + 4 - (d.getDay() || 7))
-    const yearStart = new Date(d.getFullYear(), 0, 1)
-    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
-    return weekNo
+  const getCycleAndWeekForDate = (dateString) => {
+    if (!dateString) return null
+    
+    const eventDate = new Date(dateString)
+    const dateStr = eventDate.toISOString().split('T')[0]
+    
+    for (const cycle of cyclesData.cycles) {
+      for (const week of cycle.weeks) {
+        if (dateStr >= week.start_date && dateStr <= week.end_date) {
+          return {
+            cycleNumber: cycle.cycle_number,
+            cycleStartDate: cycle.start_date,
+            cycleEndDate: cycle.end_date,
+            weekLetter: week.week_letter,
+            weekStartDate: week.start_date,
+            weekEndDate: week.end_date
+          }
+        }
+      }
+    }
+    
+    return null
   }
 
-  const groupEventsByWeek = (events) => {
-    const weeks = {}
+  const groupEventsByCycle = (events) => {
+    const cycles = {}
     
     events.forEach(event => {
-      if (!event.date) return
+      const cycleInfo = getCycleAndWeekForDate(event.date)
+      if (!cycleInfo) return
       
-      const date = new Date(event.date)
-      const weekNumber = getISOWeek(date)
-      const year = date.getFullYear()
-      const weekKey = `${year}-W${weekNumber}`
+      const cycleKey = `cycle-${cycleInfo.cycleNumber}`
       
-      if (!weeks[weekKey]) {
-        weeks[weekKey] = {
-          weekNumber,
-          year,
-          weekKey,
-          weekName: null,
+      if (!cycles[cycleKey]) {
+        cycles[cycleKey] = {
+          cycleNumber: cycleInfo.cycleNumber,
+          startDate: cycleInfo.cycleStartDate,
+          endDate: cycleInfo.cycleEndDate,
+          weeks: {}
+        }
+      }
+      
+      const weekKey = cycleInfo.weekLetter
+      if (!cycles[cycleKey].weeks[weekKey]) {
+        cycles[cycleKey].weeks[weekKey] = {
+          weekLetter: weekKey,
+          startDate: cycleInfo.weekStartDate,
+          endDate: cycleInfo.weekEndDate,
           events: []
         }
       }
       
-      if (event.type === 'shift' && event.week_name && !weeks[weekKey].weekName) {
-        weeks[weekKey].weekName = event.week_name
-      }
-      
-      weeks[weekKey].events.push(event)
+      cycles[cycleKey].weeks[weekKey].events.push({
+        ...event,
+        weekLetter: cycleInfo.weekLetter
+      })
     })
     
-    return Object.values(weeks).sort((a, b) => {
-      if (a.year !== b.year) return b.year - a.year
-      return b.weekNumber - a.weekNumber
-    })
-  }
-
-  const getWeekColor = (weekName) => {
-    if (!weekName) return 'from-gray-50 to-slate-50'
-    const colors = {
-      'A': 'from-blue-50 to-blue-100',
-      'B': 'from-green-50 to-green-100',
-      'C': 'from-yellow-50 to-yellow-100',
-      'D': 'from-purple-50 to-purple-100'
-    }
-    return colors[weekName] || 'from-gray-50 to-slate-50'
+    return Object.values(cycles).sort((a, b) => b.cycleNumber - a.cycleNumber)
   }
 
   const getWeekLabelColor = (weekName) => {
@@ -286,28 +294,38 @@ function App() {
                     <span className="font-semibold">⚠️ {t('error.label')}</span> {historyError}
                   </div>
                 ) : historyEvents.length > 0 ? (
-                  <div className="relative">
-                    {groupEventsByWeek(historyEvents).map((weekGroup) => (
-                      <div key={weekGroup.weekKey} className="relative mb-6">
-                        <div className={`absolute inset-0 bg-gradient-to-l ${getWeekColor(weekGroup.weekName)} opacity-60 rounded-xl`} />
+                  <div className="relative space-y-8">
+                    {groupEventsByCycle(historyEvents).map((cycle) => (
+                      <div key={`cycle-${cycle.cycleNumber}`} className="relative">
+                        <div className="absolute inset-0 bg-gradient-to-l from-gray-50 to-gray-100 opacity-50 rounded-xl" />
                         
                         <div className="relative flex gap-4 p-4">
-                          <div className="flex-shrink-0 w-16 text-right pt-2">
-                            <div className="text-xs font-semibold text-gray-500">
-                              {t('timeline.week')} {weekGroup.weekNumber}
+                          <div className="flex-shrink-0 w-20 text-right pt-2">
+                            <div className="text-sm font-bold text-gray-600">
+                              {t('timeline.cycle')} {cycle.cycleNumber}
                             </div>
-                            {weekGroup.weekName && (
-                              <div className={`text-3xl font-bold ${getWeekLabelColor(weekGroup.weekName)} mt-1`}>
-                                {weekGroup.weekName}
-                              </div>
-                            )}
+                            <div className="text-xs text-gray-500 mt-1">
+                              {formatDate(cycle.startDate)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatDate(cycle.endDate)}
+                            </div>
                           </div>
                           
                           <div className="relative flex-1">
                             <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
                             
-                            <div className="pl-12 space-y-6">
-                              {weekGroup.events.map((event) => {
+                            <div className="pl-12 space-y-8">
+                              {Object.values(cycle.weeks).sort((a, b) => 
+                                a.startDate.localeCompare(b.startDate)
+                              ).map((week) => (
+                                <div key={week.weekLetter} className="relative">
+                                  <div className={`absolute -left-16 top-0 text-2xl font-bold ${getWeekLabelColor(week.weekLetter)}`}>
+                                    {week.weekLetter}
+                                  </div>
+                                  
+                                  <div className="space-y-6">
+                                    {week.events.map((event) => {
                                 const getEventIcon = () => {
                                   if (event.type === 'purchase') return '🛒'
                                   if (event.type === 'shift' && event.state === 'done') return '🎯'
@@ -360,11 +378,14 @@ function App() {
                                             </div>
                                           )}
                                         </div>
-                                      )}
+                                        )}
+                                      </div>
                                     </div>
+                                  )
+                                    })}
                                   </div>
-                                )
-                              })}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
