@@ -29,9 +29,11 @@
     "noHistory": "Aucun historique d'achat",
     "noHistoryHint": "Ce membre n'a pas encore effectué d'achats",
     "loading": "Chargement de l'historique...",
-    "today": "Aujourd'hui",
-    "yesterday": "Hier",
-    "daysAgo": "jours"
+    "shiftAttended": "Présence au Créneau",
+    "shiftMissed": "Absence au Créneau",
+    "shiftExcused": "Absence Excusée",
+    "shiftLate": "Retard",
+    "shiftName": "Créneau"
   },
   "error": {
     "label": "Erreur :"

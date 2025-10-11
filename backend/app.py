@@ -84,14 +84,31 @@ def search_members():
 def get_member_history(member_id):
     try:
         purchases = odoo.get_member_purchase_history(member_id)
+        shifts = odoo.get_member_shift_history(member_id)
+        
         events = []
-        for purchase in purchases:
-            events.append({
-                'type': 'purchase',
-                'id': purchase.get('id'),
-                'date': purchase.get('date_order'),
-                'reference': purchase.get('pos_reference') or purchase.get('name')
-            })
+        
+        if purchases:
+            for purchase in purchases:
+                events.append({
+                    'type': 'purchase',
+                    'id': purchase.get('id'),
+                    'date': purchase.get('date_order'),
+                    'reference': purchase.get('pos_reference') or purchase.get('name')
+                })
+        
+        if shifts:
+            for shift in shifts:
+                events.append({
+                    'type': 'shift',
+                    'id': shift.get('id'),
+                    'date': shift.get('date_begin'),
+                    'shift_name': shift.get('shift_name'),
+                    'state': shift.get('state'),
+                    'is_late': shift.get('is_late', False)
+                })
+        
+        events.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
         
         return jsonify({
             'member_id': member_id,

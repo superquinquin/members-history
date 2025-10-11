@@ -89,23 +89,11 @@ function App() {
   const formatDate = (dateString) => {
     if (!dateString) return ''
     const date = new Date(dateString)
-    const now = new Date()
-    const diffTime = Math.abs(now - date)
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-    if (diffDays === 0) {
-      return t('timeline.today') || 'Today'
-    } else if (diffDays === 1) {
-      return t('timeline.yesterday') || 'Yesterday'
-    } else if (diffDays < 7) {
-      return `${diffDays} ${t('timeline.daysAgo') || 'days ago'}`
-    } else {
-      return new Intl.DateTimeFormat(i18n.language, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      }).format(date)
-    }
+    return new Intl.DateTimeFormat(i18n.language, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    }).format(date)
   }
 
   return (
@@ -236,25 +224,64 @@ function App() {
                   <div className="relative">
                     <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
                     
-                    {historyEvents.map((event) => (
-                      <div key={event.id} className="relative pl-20 pb-8 last:pb-0">
-                        <div className="absolute left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg text-lg">
-                          🛒
-                        </div>
-                        
-                        <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="font-semibold text-gray-900">{t('timeline.purchase')}</span>
-                            <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
+                    {historyEvents.map((event) => {
+                      const getEventIcon = () => {
+                        if (event.type === 'purchase') return '🛒'
+                        if (event.type === 'shift' && event.state === 'done') return '🎯'
+                        if (event.type === 'shift' && event.state === 'absent') return '❌'
+                        if (event.type === 'shift' && event.state === 'excused') return '✓'
+                        return '📋'
+                      }
+                      
+                      const getEventBgColor = () => {
+                        if (event.type === 'purchase') return 'from-purple-500 to-pink-500'
+                        if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
+                        if (event.type === 'shift' && event.state === 'absent') return 'from-red-500 to-rose-500'
+                        if (event.type === 'shift' && event.state === 'excused') return 'from-blue-500 to-cyan-500'
+                        return 'from-gray-500 to-slate-500'
+                      }
+                      
+                      const getEventTitle = () => {
+                        if (event.type === 'purchase') return t('timeline.purchase')
+                        if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
+                        if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
+                        if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
+                        return event.type
+                      }
+                      
+                      return (
+                        <div key={`${event.type}-${event.id}`} className="relative pl-20 pb-8 last:pb-0">
+                          <div className={`absolute left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br ${getEventBgColor()} flex items-center justify-center text-white shadow-lg text-lg`}>
+                            {getEventIcon()}
                           </div>
-                          {event.reference && (
-                            <div className="text-xs text-gray-500">
-                              {t('timeline.reference')}: {event.reference}
+                          
+                          <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                              <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
                             </div>
-                          )}
+                            {event.type === 'purchase' && event.reference && (
+                              <div className="text-xs text-gray-500">
+                                {t('timeline.reference')}: {event.reference}
+                              </div>
+                            )}
+                            {event.type === 'shift' && (
+                              <div className="text-sm text-gray-700 mt-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{t('timeline.shiftName')}:</span>
+                                  <span>{event.shift_name || 'N/A'}</span>
+                                </div>
+                                {event.is_late && (
+                                  <div className="mt-1 text-xs text-orange-600 font-medium">
+                                    ⏰ {t('timeline.shiftLate')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-purple-50 rounded-xl border-2 border-dashed border-gray-300">

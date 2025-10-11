@@ -29,9 +29,11 @@
     "noHistory": "No purchase history yet",
     "noHistoryHint": "This member hasn't made any purchases",
     "loading": "Loading history...",
-    "today": "Today",
-    "yesterday": "Yesterday",
-    "daysAgo": "days ago"
+    "shiftAttended": "Shift Attended",
+    "shiftMissed": "Shift Missed",
+    "shiftExcused": "Shift Excused",
+    "shiftLate": "Late",
+    "shiftName": "Shift"
   },
   "error": {
     "label": "Error:"

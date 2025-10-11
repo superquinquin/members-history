@@ -166,6 +166,35 @@ Shows every time the member made a purchase at the cooperative store.
 - Sorted: Newest to oldest (by `date_order desc`)
 - Limit: 50 most recent purchases
 
+**Display:**
+- Icon: 🛒
+- Color: Purple-pink gradient
+- Shows: Purchase reference/order number
+
+#### 2. Shift Participation
+Shows member participation in cooperative work shifts.
+
+**Data Source:** Odoo `shift.registration` model
+- Filters: `state in ['done', 'absent', 'excused']` and `partner_id = member_id`
+- Fields: `id`, `date_begin`, `date_end`, `state`, `shift_id`, `is_late`
+- Additional fetch from `shift.shift` model for shift name
+- Sorted: Newest to oldest (by `date_begin desc`)
+- Limit: 50 most recent shift registrations
+
+**Display:**
+- **Shift Attended** (`state='done'`):
+  - Icon: 🎯
+  - Color: Green gradient
+  - Shows: Shift name, date, and "Late" indicator if `is_late=true`
+- **Shift Missed** (`state='absent'`):
+  - Icon: ❌
+  - Color: Red gradient
+  - Shows: Shift name and date
+- **Shift Excused** (`state='excused'`):
+  - Icon: ✓
+  - Color: Blue gradient
+  - Shows: Shift name and date
+
 **Response Format:**
 ```json
 {
@@ -176,6 +205,14 @@ Shows every time the member made a purchase at the cooperative store.
       "id": 302602,
       "date": "2025-10-04 10:33:09",
       "reference": "Commande 07291-004-0043"
+    },
+    {
+      "type": "shift",
+      "id": 12345,
+      "date": "2025-10-03 09:00:00",
+      "shift_name": "Monday Morning Team A",
+      "state": "done",
+      "is_late": false
     }
   ]
 }
@@ -185,29 +222,32 @@ Shows every time the member made a purchase at the cooperative store.
 
 **Implementation:**
 - Vertical timeline with gradient line (purple to pink)
-- Event cards with type-specific icons
-- Smart date formatting:
-  - "Today" / "Yesterday" for recent events
-  - "X days ago" for events within a week
-  - Full date (e.g., "Oct 4, 2025") for older events
+- Event cards with type-specific icons and colors
+- Date formatting: Always displays real dates (e.g., "Oct 4, 2025" or "4 oct. 2025")
+  - Uses `Intl.DateTimeFormat` for locale-aware formatting
+- Events sorted by date (newest to oldest)
+- Mixed event types displayed in chronological order
 - Loading, error, and empty states
 - Fully internationalized (EN/FR)
 
 **Frontend Components:**
 - `frontend/src/App.jsx`:
   - Timeline rendering with event cards
-  - `formatDate()` helper for smart date display
-  - Purchase icon: 🛒
+  - `formatDate()` helper for locale-aware date display
+  - Dynamic icon and color based on event type and state
   - Automatic history fetch when member is selected
+  - Conditional rendering of event-specific details
 
 **Styling:**
 - Purple-pink gradient theme throughout
-- Circular icon badges with gradients
+- Circular icon badges with type-specific gradients
 - White event cards with purple borders
 - Hover effects and shadows
 - Responsive layout
 
-**Future Event Types:**
-- Shift participation (planned)
-- Attendance records (planned)
-- Other cooperative activities (planned)
+**Backend Implementation:**
+- `backend/odoo_client.py`:
+  - `get_member_purchase_history()` - Fetches POS orders
+  - `get_member_shift_history()` - Fetches shift registrations with shift details
+- `backend/app.py`:
+  - `/api/member/<id>/history` - Combines and sorts all event types

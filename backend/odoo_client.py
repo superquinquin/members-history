@@ -77,3 +77,48 @@ class OdooClient:
         
         print(f"Purchase history for partner {partner_id}: {len(results)} orders")
         return results
+
+    def get_member_shift_history(self, partner_id: int, limit: int = 50) -> List[Dict]:
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+        
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+        
+        domain = [
+            ('partner_id', '=', partner_id),
+            ('state', 'in', ['done', 'absent', 'excused'])
+        ]
+        fields = ['id', 'date_begin', 'date_end', 'state', 'shift_id', 'is_late']
+        
+        results = self.models.execute_kw(
+            self.db, self.uid, self.password,
+            'shift.registration', 'search_read',
+            [domain],
+            {'fields': fields, 'limit': limit, 'order': 'date_begin desc'}
+        )
+        
+        shift_ids = [r['shift_id'][0] if isinstance(r.get('shift_id'), list) else r.get('shift_id') 
+                     for r in results if r.get('shift_id')]
+        
+        shifts = {}
+        if shift_ids:
+            shift_fields = ['id', 'name', 'date_begin']
+            shift_results = self.models.execute_kw(
+                self.db, self.uid, self.password,
+                'shift.shift', 'read',
+                [shift_ids],
+                {'fields': shift_fields}
+            )
+            shifts = {s['id']: s for s in shift_results}
+        
+        for registration in results:
+            shift_id = registration['shift_id'][0] if isinstance(registration.get('shift_id'), list) else registration.get('shift_id')
+            if shift_id and shift_id in shifts:
+                registration['shift_name'] = shifts[shift_id]['name']
+            else:
+                registration['shift_name'] = None
+        
+        print(f"Shift history for partner {partner_id}: {len(results)} registrations")
+        return results
