@@ -82,10 +82,26 @@ def search_members():
 
 @app.route('/api/member/<int:member_id>/history', methods=['GET'])
 def get_member_history(member_id):
-    return jsonify({
-        'member_id': member_id,
-        'history': []
-    })
+    try:
+        purchases = odoo.get_member_purchase_history(member_id)
+        events = []
+        for purchase in purchases:
+            events.append({
+                'type': 'purchase',
+                'id': purchase.get('id'),
+                'date': purchase.get('date_order'),
+                'reference': purchase.get('pos_reference') or purchase.get('name')
+            })
+        
+        return jsonify({
+            'member_id': member_id,
+            'events': events
+        })
+    except Exception as e:
+        print(f"Error fetching member history: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5001))

@@ -23,6 +23,16 @@
     "comingSoon": "History feature coming soon",
     "comingSoonDetails": "We're working on bringing you detailed member history"
   },
+  "timeline": {
+    "purchase": "Purchase in Store",
+    "reference": "Ref",
+    "noHistory": "No purchase history yet",
+    "noHistoryHint": "This member hasn't made any purchases",
+    "loading": "Loading history...",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "daysAgo": "days ago"
+  },
   "error": {
     "label": "Error:"
   },

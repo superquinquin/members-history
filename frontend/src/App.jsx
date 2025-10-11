@@ -8,6 +8,9 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedMember, setSelectedMember] = useState(null)
+  const [historyEvents, setHistoryEvents] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(null)
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
@@ -41,8 +44,26 @@ function App() {
     }
   }
 
-  const selectMember = (member) => {
+  const selectMember = async (member) => {
     setSelectedMember(member)
+    setHistoryEvents([])
+    setHistoryError(null)
+    setHistoryLoading(true)
+
+    try {
+      const response = await fetch(`${apiUrl}/api/member/${member.id}/history`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch history')
+      }
+
+      setHistoryEvents(data.events || [])
+    } catch (err) {
+      setHistoryError(err.message)
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   const getImageSrc = (imageData) => {
@@ -63,6 +84,28 @@ function App() {
       return words[0][0] + words[1][0]
     }
     return name[0]
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = Math.abs(now - date)
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) {
+      return t('timeline.today') || 'Today'
+    } else if (diffDays === 1) {
+      return t('timeline.yesterday') || 'Yesterday'
+    } else if (diffDays < 7) {
+      return `${diffDays} ${t('timeline.daysAgo') || 'days ago'}`
+    } else {
+      return new Intl.DateTimeFormat(i18n.language, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }).format(date)
+    }
   }
 
   return (
@@ -173,17 +216,53 @@ function App() {
 
             {selectedMember && (
               <div className="border-t-2 border-purple-200 pt-8 mt-8">
-                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-6 mb-4">
+                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-6 mb-6">
                   <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
                     📊 {t('history.title', { name: selectedMember.name })}
                   </h2>
                   <p className="text-purple-700">{t('history.memberId')} {selectedMember.id}</p>
                 </div>
-                <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-dashed border-purple-300">
-                  <div className="text-6xl mb-4">🚧</div>
-                  <p className="text-gray-600 text-lg font-medium">{t('history.comingSoon')}</p>
-                  <p className="text-gray-500 mt-2">{t('history.comingSoonDetails')}</p>
-                </div>
+
+                {historyLoading ? (
+                  <div className="text-center py-12 bg-white rounded-xl border-2 border-purple-200">
+                    <div className="text-4xl mb-4">⏳</div>
+                    <p className="text-gray-600 font-medium">{t('timeline.loading')}</p>
+                  </div>
+                ) : historyError ? (
+                  <div className="p-5 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 rounded-xl text-red-700 shadow-md">
+                    <span className="font-semibold">⚠️ {t('error.label')}</span> {historyError}
+                  </div>
+                ) : historyEvents.length > 0 ? (
+                  <div className="relative">
+                    <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-purple-300 to-pink-300" />
+                    
+                    {historyEvents.map((event) => (
+                      <div key={event.id} className="relative pl-20 pb-8 last:pb-0">
+                        <div className="absolute left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg text-lg">
+                          🛒
+                        </div>
+                        
+                        <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-semibold text-gray-900">{t('timeline.purchase')}</span>
+                            <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
+                          </div>
+                          {event.reference && (
+                            <div className="text-xs text-gray-500">
+                              {t('timeline.reference')}: {event.reference}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-purple-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <div className="text-6xl mb-4">📭</div>
+                    <p className="text-gray-600 text-lg font-medium">{t('timeline.noHistory')}</p>
+                    <p className="text-gray-500 mt-2">{t('timeline.noHistoryHint')}</p>
+                  </div>
+                )}
               </div>
             )}
 

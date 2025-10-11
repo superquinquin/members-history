@@ -23,6 +23,16 @@
     "comingSoon": "Fonctionnalité d'historique à venir",
     "comingSoonDetails": "Nous travaillons pour vous apporter l'historique détaillé des membres"
   },
+  "timeline": {
+    "purchase": "Achat en Magasin",
+    "reference": "Réf",
+    "noHistory": "Aucun historique d'achat",
+    "noHistoryHint": "Ce membre n'a pas encore effectué d'achats",
+    "loading": "Chargement de l'historique...",
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "daysAgo": "jours"
+  },
   "error": {
     "label": "Erreur :"
   },

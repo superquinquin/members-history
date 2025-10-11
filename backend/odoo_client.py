@@ -56,3 +56,24 @@ class OdooClient:
         results = self.search_read('res.partner', domain, fields)
         print(f"Odoo search results for '{name}': {results}")
         return results
+
+    def get_member_purchase_history(self, partner_id: int, limit: int = 50) -> List[Dict]:
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+        
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+        
+        domain = [('partner_id', '=', partner_id), ('state', '=', 'done')]
+        fields = ['id', 'date_order', 'name', 'pos_reference']
+        
+        results = self.models.execute_kw(
+            self.db, self.uid, self.password,
+            'pos.order', 'search_read',
+            [domain],
+            {'fields': fields, 'limit': limit, 'order': 'date_order desc'}
+        )
+        
+        print(f"Purchase history for partner {partner_id}: {len(results)} orders")
+        return results
