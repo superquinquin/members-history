@@ -2,22 +2,49 @@ import xmlrpc.client
 import os
 from typing import Optional, Dict, List, Any, cast
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 class OdooClient:
     def __init__(self):
-        self.url = os.getenv('ODOO_URL')
+        raw_url = os.getenv('ODOO_URL')
         self.db = os.getenv('ODOO_DB')
         self.username = os.getenv('ODOO_USERNAME')
         self.password = os.getenv('ODOO_PASSWORD')
         self.uid: Optional[int] = None
         self.common: Optional[Any] = None
         self.models: Optional[Any] = None
+        
+        # Extract URL without credentials for XML-RPC
+        if raw_url and '@' in raw_url:
+            # Remove credentials from URL for XML-RPC endpoints
+            # Example: https://user:pass@domain.com -> https://domain.com
+            parts = raw_url.split('@')
+            if len(parts) >= 2:
+                self.url = parts[1]
+                if not self.url.startswith('http'):
+                    self.url = 'https://' + self.url
+            else:
+                self.url = raw_url
+        else:
+            self.url = raw_url
 
     def authenticate(self) -> bool:
         try:
+            # Ensure URL has proper protocol
+            if self.url and not self.url.startswith('http'):
+                self.url = 'https://' + self.url
+                
             self.common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
             self.models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
+            
             self.uid = self.common.authenticate(self.db, self.username, self.password, {})
             return self.uid is not None
+                
         except Exception as e:
             print(f"Authentication failed: {e}")
             return False
@@ -125,4 +152,12 @@ class OdooClient:
                 registration['week_name'] = None
         
         print(f"Shift history for partner {partner_id}: {len(results)} registrations")
+        return results
+
+    def get_worker_members_addresses(self) -> List[Dict]:
+        """Fetch addresses of worker members only (no personal data)"""
+        domain = [('is_worker_member', '=', True), ('cooperative_state', '!=', 'unsubscribed')]
+        fields = ['id', 'street', 'street2', 'zip', 'city']
+        results = self.search_read('res.partner', domain, fields)
+        print(f"Found {len(results)} worker members with addresses")
         return results

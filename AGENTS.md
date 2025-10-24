@@ -1,5 +1,26 @@
 # Agent Instructions for Members History
 
+## Subagents
+
+### doc
+**Role:** Create and update developer documentation for the project
+
+**Capabilities:**
+- Generate API documentation from code
+- Update architecture and design documents
+- Document code patterns, conventions, and best practices
+- Create getting started guides and tutorials
+- Maintain changelog and migration guides
+- Document dependencies and environment setup
+
+**Guidelines:**
+- Follow project conventions from Code Style section
+- Keep documentation concise and practical
+- Include code examples where relevant
+- Update existing docs rather than creating duplicates
+- Place docs in appropriate locations (README.md for overview, specs/ for features/specs, inline for API docs)
+- Use markdown format with clear headings and structure
+
 ## Commands
 
 **Frontend (from `/frontend`):**
