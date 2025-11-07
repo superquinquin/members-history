@@ -1,8 +1,30 @@
 { pkgs, lib, config, inputs, ... }:
 
+let
+  # Install openspec from npm as a Nix package
+  openspec = pkgs.buildNpmPackage rec {
+    pname = "openspec";
+    version = "latest";
+    
+    src = pkgs.fetchFromGitHub {
+      owner = "fission-ai";
+      repo = "openspec";
+      rev = "main";
+      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    };
+    
+    npmDepsHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    
+    dontNpmBuild = true;
+  };
+in
 {
   packages = [ 
     pkgs.git
+    # Use npx to run openspec from node_modules
+    (pkgs.writeShellScriptBin "openspec" ''
+      exec ${pkgs.nodejs_20}/bin/npx -y @fission-ai/openspec@latest "$@"
+    '')
   ];
 
   languages.python = {
@@ -36,5 +58,7 @@
     echo "Configure backend/.env with your Odoo credentials before starting"
     echo ""
     echo "Run 'devenv up' to start both services"
+    echo ""
+    echo "✨ OpenSpec available via 'openspec' command"
   '';
 }
