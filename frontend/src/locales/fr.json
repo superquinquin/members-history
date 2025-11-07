@@ -35,7 +35,15 @@
     "shiftLate": "Retard",
     "shiftName": "Créneau",
     "week": "Semaine",
-    "cycle": "Cycle"
+    "cycle": "Cycle",
+    "onLeave": "En Congé",
+    "duringLeave": "Pendant congé",
+    "coveredByLeave": "Couvert par congé",
+    "leaveStart": "Début du Congé",
+    "leaveEnd": "Fin du Congé",
+    "leaveType": "Type de Congé",
+    "until": "Jusqu'au",
+    "since": "Depuis le"
   },
   "error": {
     "label": "Erreur :"

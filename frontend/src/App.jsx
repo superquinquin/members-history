@@ -12,6 +12,7 @@ function App() {
   const [historyEvents, setHistoryEvents] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState(null)
+  const [leaves, setLeaves] = useState([])
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
@@ -48,6 +49,7 @@ function App() {
   const selectMember = async (member) => {
     setSelectedMember(member)
     setHistoryEvents([])
+    setLeaves([])
     setHistoryError(null)
     setHistoryLoading(true)
 
@@ -60,6 +62,7 @@ function App() {
       }
 
       setHistoryEvents(data.events || [])
+      setLeaves(data.leaves || [])
     } catch (err) {
       setHistoryError(err.message)
     } finally {
@@ -130,8 +133,38 @@ function App() {
     return null
   }
 
-  const groupEventsByCycle = (events) => {
+  const isEventDuringLeave = (eventDate, leaves) => {
+    if (!eventDate || !leaves || leaves.length === 0) return null
+    
+    const eventDateStr = new Date(eventDate).toISOString().split('T')[0]
+    
+    for (const leave of leaves) {
+      if (eventDateStr >= leave.start_date && eventDateStr <= leave.stop_date) {
+        return leave
+      }
+    }
+    
+    return null
+  }
+
+  const formatDateRange = (startDate, endDate) => {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const startFormatted = new Intl.DateTimeFormat(i18n.language, {
+      month: 'short',
+      day: 'numeric'
+    }).format(start)
+    const endFormatted = new Intl.DateTimeFormat(i18n.language, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }).format(end)
+    return `${startFormatted} - ${endFormatted}`
+  }
+
+  const groupEventsByCycle = (events, leaves) => {
     const cycles = {}
+    const allEvents = []
     
     events.forEach(event => {
       const cycleInfo = getCycleAndWeekForDate(event.date)
@@ -144,7 +177,9 @@ function App() {
           cycleNumber: cycleInfo.cycleNumber,
           startDate: cycleInfo.cycleStartDate,
           endDate: cycleInfo.cycleEndDate,
-          weeks: {}
+          weeks: {},
+          leaves: [],
+          allEvents: []
         }
       }
       
@@ -158,11 +193,75 @@ function App() {
         }
       }
       
-      cycles[cycleKey].weeks[weekKey].events.push({
+      const duringLeave = isEventDuringLeave(event.date, leaves)
+      
+      const eventWithMeta = {
         ...event,
-        weekLetter: cycleInfo.weekLetter
-      })
+        weekLetter: cycleInfo.weekLetter,
+        duringLeave: duringLeave
+      }
+      
+      cycles[cycleKey].weeks[weekKey].events.push(eventWithMeta)
+      cycles[cycleKey].allEvents.push(eventWithMeta)
+      allEvents.push({ ...eventWithMeta, cycleKey })
     })
+    
+    if (leaves) {
+      leaves.forEach(leave => {
+        const leaveStart = new Date(leave.start_date)
+        const leaveEnd = new Date(leave.stop_date)
+        
+        const startCycleInfo = getCycleAndWeekForDate(leave.start_date)
+        if (startCycleInfo) {
+          const cycleKey = `cycle-${startCycleInfo.cycleNumber}`
+          if (cycles[cycleKey]) {
+            const weekKey = startCycleInfo.weekLetter
+            if (!cycles[cycleKey].weeks[weekKey]) {
+              cycles[cycleKey].weeks[weekKey] = {
+                weekLetter: weekKey,
+                startDate: startCycleInfo.weekStartDate,
+                endDate: startCycleInfo.weekEndDate,
+                events: []
+              }
+            }
+            cycles[cycleKey].weeks[weekKey].events.push({
+              type: 'leave_start',
+              date: leave.start_date,
+              leave_type: leave.leave_type,
+              leave_end: leave.stop_date,
+              leave_id: leave.id,
+              weekLetter: startCycleInfo.weekLetter,
+              duringLeave: false
+            })
+          }
+        }
+        
+        const endCycleInfo = getCycleAndWeekForDate(leave.stop_date)
+        if (endCycleInfo) {
+          const cycleKey = `cycle-${endCycleInfo.cycleNumber}`
+          if (cycles[cycleKey]) {
+            const weekKey = endCycleInfo.weekLetter
+            if (!cycles[cycleKey].weeks[weekKey]) {
+              cycles[cycleKey].weeks[weekKey] = {
+                weekLetter: weekKey,
+                startDate: endCycleInfo.weekStartDate,
+                endDate: endCycleInfo.weekEndDate,
+                events: []
+              }
+            }
+            cycles[cycleKey].weeks[weekKey].events.push({
+              type: 'leave_end',
+              date: leave.stop_date,
+              leave_type: leave.leave_type,
+              leave_start: leave.start_date,
+              leave_id: leave.id,
+              weekLetter: endCycleInfo.weekLetter,
+              duringLeave: false
+            })
+          }
+        }
+      })
+    }
     
     return Object.values(cycles).sort((a, b) => b.cycleNumber - a.cycleNumber)
   }
@@ -304,12 +403,17 @@ function App() {
                   </div>
                 ) : historyEvents.length > 0 ? (
                   <div className="relative space-y-8">
-                    {groupEventsByCycle(historyEvents).map((cycle) => (
+                    {groupEventsByCycle(historyEvents, leaves).map((cycle) => {
+                      const cycleStartDate = new Date(cycle.startDate)
+                      const cycleEndDate = new Date(cycle.endDate)
+                      const cycleDuration = cycleEndDate - cycleStartDate
+                      
+                      return (
                       <div key={`cycle-${cycle.cycleNumber}`} className="relative">
                         <div className="absolute inset-0 bg-gradient-to-l from-gray-50 to-gray-100 opacity-50 rounded-xl" />
                         
-                        <div className="relative flex gap-4 p-4">
-                          <div className="flex-shrink-0 w-28 text-right pt-2 pr-12">
+                        <div className="relative grid grid-cols-[112px_1fr] gap-4 p-4">
+                          <div className="flex-shrink-0 text-right pt-2 pr-12">
                             <div className="text-sm font-bold text-gray-600">
                               {t('timeline.cycle')} {cycle.cycleNumber}
                             </div>
@@ -321,7 +425,7 @@ function App() {
                             </div>
                           </div>
                           
-                          <div className="relative flex-1">
+                          <div className="relative min-h-[200px]">
                             <div className="pl-12 space-y-8">
                               {Object.values(cycle.weeks).sort((a, b) => 
                                 b.startDate.localeCompare(a.startDate)
@@ -334,9 +438,13 @@ function App() {
                                   </div>
                                   
                                   <div className="space-y-6">
-                                    {week.events.map((event) => {
+                                    {week.events.sort((a, b) => 
+                                      new Date(b.date) - new Date(a.date)
+                                    ).map((event) => {
                                 const getEventIcon = () => {
                                   if (event.type === 'purchase') return '🛒'
+                                  if (event.type === 'leave_start') return '🏖️'
+                                  if (event.type === 'leave_end') return '🔙'
                                   if (event.type === 'shift' && event.state === 'done') return '🎯'
                                   if (event.type === 'shift' && event.state === 'absent') return '❌'
                                   if (event.type === 'shift' && event.state === 'excused') return '✓'
@@ -345,14 +453,22 @@ function App() {
                                 
                                 const getEventBgColor = () => {
                                   if (event.type === 'purchase') return 'from-purple-500 to-pink-500'
+                                  if (event.type === 'leave_start') return 'from-yellow-500 to-amber-500'
+                                  if (event.type === 'leave_end') return 'from-yellow-500 to-amber-500'
                                   if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
-                                  if (event.type === 'shift' && event.state === 'absent') return 'from-red-500 to-rose-500'
-                                  if (event.type === 'shift' && event.state === 'excused') return 'from-blue-500 to-cyan-500'
+                                  if (event.type === 'shift' && event.state === 'absent') {
+                                    return event.duringLeave ? 'from-gray-400 to-gray-500' : 'from-red-500 to-rose-500'
+                                  }
+                                  if (event.type === 'shift' && event.state === 'excused') {
+                                    return event.duringLeave ? 'from-gray-400 to-gray-500' : 'from-blue-500 to-cyan-500'
+                                  }
                                   return 'from-gray-500 to-slate-500'
                                 }
                                 
                                 const getEventTitle = () => {
                                   if (event.type === 'purchase') return t('timeline.purchase')
+                                  if (event.type === 'leave_start') return t('timeline.leaveStart')
+                                  if (event.type === 'leave_end') return t('timeline.leaveEnd')
                                   if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
                                   if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
                                   if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
@@ -360,19 +476,44 @@ function App() {
                                 }
                                 
                                 return (
-                                  <div key={`${event.type}-${event.id}`} className="relative">
+                                  <div key={`${event.type}-${event.id || event.leave_id}-${event.date}`} className="relative">
                                     <div className={`absolute -left-12 top-1 w-8 h-8 rounded-full bg-gradient-to-br ${getEventBgColor()} flex items-center justify-center text-white shadow-lg text-lg z-10`}>
                                       {getEventIcon()}
                                     </div>
                                     
-                                    <div className="bg-white rounded-xl p-4 shadow-md border-2 border-purple-200 hover:shadow-lg transition-all">
+                                    <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${(event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' : event.duringLeave ? 'border-yellow-300 bg-yellow-50' : 'border-purple-200'}`}>
                                       <div className="flex justify-between items-center mb-2">
-                                        <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                                          {event.duringLeave && (
+                                            <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
+                                              {t('timeline.duringLeave')}
+                                            </span>
+                                          )}
+                                        </div>
                                         <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
                                       </div>
                                       {event.type === 'purchase' && event.reference && (
                                         <div className="text-xs text-gray-500">
                                           {t('timeline.reference')}: {event.reference}
+                                        </div>
+                                      )}
+                                      {(event.type === 'leave_start' || event.type === 'leave_end') && (
+                                        <div className="text-sm text-gray-700 mt-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-medium">{t('timeline.leaveType')}:</span>
+                                            <span>{event.leave_type || 'N/A'}</span>
+                                          </div>
+                                          {event.type === 'leave_start' && event.leave_end && (
+                                            <div className="mt-1 text-xs text-gray-600">
+                                              {t('timeline.until')}: {formatDate(event.leave_end)}
+                                            </div>
+                                          )}
+                                          {event.type === 'leave_end' && event.leave_start && (
+                                            <div className="mt-1 text-xs text-gray-600">
+                                              {t('timeline.since')}: {formatDate(event.leave_start)}
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                       {event.type === 'shift' && (
@@ -384,6 +525,11 @@ function App() {
                                           {event.is_late && (
                                             <div className="mt-1 text-xs text-orange-600 font-medium">
                                               ⏰ {t('timeline.shiftLate')}
+                                            </div>
+                                          )}
+                                          {event.duringLeave && (event.state === 'absent' || event.state === 'excused') && (
+                                            <div className="mt-1 text-xs text-yellow-700 font-medium">
+                                              🏖️ {t('timeline.coveredByLeave')}
                                             </div>
                                           )}
                                         </div>
@@ -399,7 +545,8 @@ function App() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )}
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-purple-50 rounded-xl border-2 border-dashed border-gray-300">

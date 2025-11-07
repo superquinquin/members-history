@@ -35,7 +35,15 @@
     "shiftLate": "Late",
     "shiftName": "Shift",
     "week": "Week",
-    "cycle": "Cycle"
+    "cycle": "Cycle",
+    "onLeave": "On Leave",
+    "duringLeave": "During leave",
+    "coveredByLeave": "Covered by leave",
+    "leaveStart": "Leave Started",
+    "leaveEnd": "Leave Ended",
+    "leaveType": "Leave Type",
+    "until": "Until",
+    "since": "Since"
   },
   "error": {
     "label": "Error:"

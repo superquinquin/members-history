@@ -154,6 +154,36 @@ class OdooClient:
         print(f"Shift history for partner {partner_id}: {len(results)} registrations")
         return results
 
+    def get_member_leaves(self, partner_id: int) -> List[Dict]:
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+        
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+        
+        domain = [
+            ('partner_id', '=', partner_id),
+            ('state', '=', 'done')
+        ]
+        fields = ['id', 'start_date', 'stop_date', 'type_id', 'state']
+        
+        results = self.models.execute_kw(
+            self.db, self.uid, self.password,
+            'shift.leave', 'search_read',
+            [domain],
+            {'fields': fields, 'order': 'start_date desc'}
+        )
+        
+        for leave in results:
+            if leave.get('type_id') and isinstance(leave['type_id'], list):
+                leave['leave_type'] = leave['type_id'][1]
+            else:
+                leave['leave_type'] = 'Leave'
+        
+        print(f"Leave history for partner {partner_id}: {len(results)} leaves")
+        return results
+
     def get_worker_members_addresses(self) -> List[Dict]:
         """Fetch addresses of worker members only (no personal data)"""
         domain = [('is_worker_member', '=', True), ('cooperative_state', '!=', 'unsubscribed')]

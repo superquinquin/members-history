@@ -85,6 +85,7 @@ def get_member_history(member_id):
     try:
         purchases = odoo.get_member_purchase_history(member_id)
         shifts = odoo.get_member_shift_history(member_id)
+        leaves = odoo.get_member_leaves(member_id)
         
         events = []
         
@@ -112,9 +113,21 @@ def get_member_history(member_id):
         
         events.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
         
+        leave_periods = []
+        if leaves:
+            for leave in leaves:
+                leave_periods.append({
+                    'id': leave.get('id'),
+                    'start_date': leave.get('start_date'),
+                    'stop_date': leave.get('stop_date'),
+                    'leave_type': leave.get('leave_type'),
+                    'state': leave.get('state')
+                })
+        
         return jsonify({
             'member_id': member_id,
-            'events': events
+            'events': events,
+            'leaves': leave_periods
         })
     except Exception as e:
         print(f"Error fetching member history: {e}")
