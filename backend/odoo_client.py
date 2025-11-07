@@ -184,6 +184,31 @@ class OdooClient:
         print(f"Leave history for partner {partner_id}: {len(results)} leaves")
         return results
 
+    def get_member_counter_events(self, partner_id: int, limit: int = 50) -> List[Dict]:
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+        
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+        
+        domain = [
+            ('partner_id', '=', partner_id)
+        ]
+        fields = ['id', 'create_date', 'point_qty', 'sum_current_qty', 'shift_id', 'is_manual', 'name', 'type']
+        
+        # Fetch ALL counter events (no limit) to calculate running totals correctly
+        # The limit parameter is ignored here - we need all historical events for accurate totals
+        results = self.models.execute_kw(
+            self.db, self.uid, self.password,
+            'shift.counter.event', 'search_read',
+            [domain],
+            {'fields': fields, 'order': 'create_date desc'}
+        )
+        
+        print(f"Counter events for partner {partner_id}: {len(results)} events (raw from Odoo)")
+        return results
+
     def get_worker_members_addresses(self) -> List[Dict]:
         """Fetch addresses of worker members only (no personal data)"""
         domain = [('is_worker_member', '=', True), ('cooperative_state', '!=', 'unsubscribed')]

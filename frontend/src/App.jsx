@@ -445,6 +445,7 @@ function App() {
                                   if (event.type === 'purchase') return '🛒'
                                   if (event.type === 'leave_start') return '🏖️'
                                   if (event.type === 'leave_end') return '🔙'
+                                  if (event.type === 'counter') return '⚖️'
                                   if (event.type === 'shift' && event.state === 'done') return '🎯'
                                   if (event.type === 'shift' && event.state === 'absent') return '❌'
                                   if (event.type === 'shift' && event.state === 'excused') return '✓'
@@ -455,6 +456,11 @@ function App() {
                                   if (event.type === 'purchase') return 'from-purple-500 to-pink-500'
                                   if (event.type === 'leave_start') return 'from-yellow-500 to-amber-500'
                                   if (event.type === 'leave_end') return 'from-yellow-500 to-amber-500'
+                                  if (event.type === 'counter') {
+                                    if (event.point_qty > 0) return 'from-green-500 to-emerald-500'
+                                    if (event.point_qty < 0) return 'from-red-500 to-rose-500'
+                                    return 'from-gray-500 to-slate-500'
+                                  }
                                   if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
                                   if (event.type === 'shift' && event.state === 'absent') {
                                     return event.duringLeave ? 'from-gray-400 to-gray-500' : 'from-red-500 to-rose-500'
@@ -469,6 +475,7 @@ function App() {
                                   if (event.type === 'purchase') return t('timeline.purchase')
                                   if (event.type === 'leave_start') return t('timeline.leaveStart')
                                   if (event.type === 'leave_end') return t('timeline.leaveEnd')
+                                  if (event.type === 'counter') return t('counter.manual')
                                   if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
                                   if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
                                   if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
@@ -481,7 +488,7 @@ function App() {
                                       {getEventIcon()}
                                     </div>
                                     
-                                    <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${(event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' : event.duringLeave ? 'border-yellow-300 bg-yellow-50' : 'border-purple-200'}`}>
+                                    <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${(event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' : event.type === 'counter' ? (event.point_qty > 0 ? 'border-green-400' : event.point_qty < 0 ? 'border-red-400' : 'border-gray-400') : event.duringLeave ? 'border-yellow-300 bg-yellow-50' : 'border-purple-200'}`}>
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
                                           <span className="font-semibold text-gray-900">{getEventTitle()}</span>
@@ -518,9 +525,23 @@ function App() {
                                       )}
                                       {event.type === 'shift' && (
                                         <div className="text-sm text-gray-700 mt-2">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-medium">{t('timeline.shiftName')}:</span>
-                                            <span>{event.shift_name || 'N/A'}</span>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium">{t('timeline.shiftName')}:</span>
+                                              <span>{event.shift_name || 'N/A'}</span>
+                                            </div>
+                                            {event.counter && (
+                                              <div className={`text-sm font-semibold ${event.counter.point_qty > 0 ? 'text-green-600' : event.counter.point_qty < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                                <span className="mr-1">{event.counter.type === 'ftop' ? '⏱️' : '📅'}</span>
+                                                <span className="text-xs font-medium mr-1">
+                                                  {event.counter.type === 'ftop' ? t('counter.ftop_short') : t('counter.standard_short')}
+                                                </span>
+                                                {event.counter.point_qty > 0 ? '+' : ''}{event.counter.point_qty} 
+                                                <span className="text-gray-600 ml-1">
+                                                  → {event.counter.type === 'ftop' ? event.counter.ftop_total : event.counter.standard_total}
+                                                </span>
+                                              </div>
+                                            )}
                                           </div>
                                           {event.is_late && (
                                             <div className="mt-1 text-xs text-orange-600 font-medium">
@@ -530,6 +551,27 @@ function App() {
                                           {event.duringLeave && (event.state === 'absent' || event.state === 'excused') && (
                                             <div className="mt-1 text-xs text-yellow-700 font-medium">
                                               🏖️ {t('timeline.coveredByLeave')}
+                                            </div>
+                                          )}
+                                        </div>
+                                        )}
+                                      {event.type === 'counter' && (
+                                        <div className="text-sm text-gray-700 mt-2">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-lg">{event.counter_type === 'ftop' ? '⏱️' : '📅'}</span>
+                                            <span className="text-sm font-semibold mr-2">
+                                              {event.counter_type === 'ftop' ? t('counter.ftop_short') : t('counter.standard_short')}
+                                            </span>
+                                            <span className={`text-2xl font-bold ${event.point_qty > 0 ? 'text-green-600' : event.point_qty < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                              {event.point_qty > 0 ? '+' : ''}{event.point_qty}
+                                            </span>
+                                            <span className="text-gray-500">
+                                              → {event.counter_type === 'ftop' ? event.ftop_total : event.standard_total}
+                                            </span>
+                                          </div>
+                                          {event.name && (
+                                            <div className="text-xs text-gray-600 mt-1">
+                                              {event.name}
                                             </div>
                                           )}
                                         </div>

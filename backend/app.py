@@ -86,6 +86,151 @@ def get_member_history(member_id):
         purchases = odoo.get_member_purchase_history(member_id)
         shifts = odoo.get_member_shift_history(member_id)
         leaves = odoo.get_member_leaves(member_id)
+        counter_events = []
+        
+        try:
+            counter_events = odoo.get_member_counter_events(member_id)
+        except Exception as counter_error:
+            print(f"Error fetching counter events (continuing without): {counter_error}")
+            import traceback
+            traceback.print_exc()
+        
+        # Sort counter events chronologically (oldest first) for proper aggregation
+        counter_events_sorted = sorted(counter_events, key=lambda x: x.get('create_date', ''))
+        
+        # Step 1: Aggregate counter events by shift_id AND counter type
+        # Members have two separate counters: ftop and standard (ABCD)
+        ftop_shift_map = {}
+        standard_shift_map = {}
+        ftop_manual_events = []
+        standard_manual_events = []
+        
+        for counter_event in counter_events_sorted:
+            shift_id = counter_event.get('shift_id')
+            counter_type = counter_event.get('type', 'standard')
+            
+            if shift_id:
+                if isinstance(shift_id, list):
+                    shift_id = shift_id[0]
+                
+                # Choose the right map based on counter type
+                shift_map = ftop_shift_map if counter_type == 'ftop' else standard_shift_map
+                
+                counter_data = {
+                    'point_qty': counter_event.get('point_qty', 0),
+                    'create_date': counter_event.get('create_date', ''),
+                    'type': counter_type
+                }
+                
+                if shift_id in shift_map:
+                    shift_map[shift_id]['point_qty'] += counter_data['point_qty']
+                    # Keep the latest create_date for this shift's aggregated events
+                    if counter_data['create_date'] > shift_map[shift_id]['create_date']:
+                        shift_map[shift_id]['create_date'] = counter_data['create_date']
+                else:
+                    shift_map[shift_id] = counter_data
+            else:
+                # Manual counter event with no shift_id
+                event_data = {
+                    'type': 'manual',
+                    'create_date': counter_event.get('create_date', ''),
+                    'point_qty': counter_event.get('point_qty', 0),
+                    'counter_type': counter_type,
+                    'original_event': counter_event
+                }
+                
+                if counter_type == 'ftop':
+                    ftop_manual_events.append(event_data)
+                else:
+                    standard_manual_events.append(event_data)
+        
+        # Step 2: Merge all counter items and calculate running totals for both counter types
+        # Each event needs to know BOTH counter totals at that point in time
+        all_counter_items = []
+        
+        # Add FTOP items
+        for shift_id, data in ftop_shift_map.items():
+            all_counter_items.append({
+                'type': 'shift',
+                'counter_type': 'ftop',
+                'shift_id': shift_id,
+                'create_date': data['create_date'],
+                'point_qty': data['point_qty']
+            })
+        for manual_event in ftop_manual_events:
+            all_counter_items.append({
+                'type': 'manual',
+                'counter_type': 'ftop',
+                'create_date': manual_event['create_date'],
+                'point_qty': manual_event['point_qty'],
+                'original_event': manual_event['original_event']
+            })
+        
+        # Add Standard items
+        for shift_id, data in standard_shift_map.items():
+            all_counter_items.append({
+                'type': 'shift',
+                'counter_type': 'standard',
+                'shift_id': shift_id,
+                'create_date': data['create_date'],
+                'point_qty': data['point_qty']
+            })
+        for manual_event in standard_manual_events:
+            all_counter_items.append({
+                'type': 'manual',
+                'counter_type': 'standard',
+                'create_date': manual_event['create_date'],
+                'point_qty': manual_event['point_qty'],
+                'original_event': manual_event['original_event']
+            })
+        
+        # Sort all items chronologically
+        all_counter_items.sort(key=lambda x: x['create_date'])
+        
+        # Calculate running totals for both counters as we go through chronologically
+        ftop_running_total = 0
+        standard_running_total = 0
+        
+        for item in all_counter_items:
+            # Update the appropriate counter
+            if item['counter_type'] == 'ftop':
+                ftop_running_total += item['point_qty']
+            else:
+                standard_running_total += item['point_qty']
+            
+            # Store both running totals at this point in time
+            item['ftop_total'] = int(ftop_running_total)
+            item['standard_total'] = int(standard_running_total)
+            # For backward compatibility, sum_current_qty is the active counter's total
+            item['sum_current_qty'] = int(ftop_running_total) if item['counter_type'] == 'ftop' else int(standard_running_total)
+        
+        # Step 3: Map totals back to shift maps and manual events
+        for item in all_counter_items:
+            if item['type'] == 'shift':
+                if item['counter_type'] == 'ftop':
+                    ftop_shift_map[item['shift_id']]['ftop_total'] = item['ftop_total']
+                    ftop_shift_map[item['shift_id']]['standard_total'] = item['standard_total']
+                    ftop_shift_map[item['shift_id']]['sum_current_qty'] = item['sum_current_qty']
+                else:
+                    standard_shift_map[item['shift_id']]['standard_total'] = item['standard_total']
+                    standard_shift_map[item['shift_id']]['ftop_total'] = item['ftop_total']
+                    standard_shift_map[item['shift_id']]['sum_current_qty'] = item['sum_current_qty']
+            elif item['type'] == 'manual':
+                item['original_event']['ftop_total'] = item['ftop_total']
+                item['original_event']['standard_total'] = item['standard_total']
+                item['original_event']['sum_current_qty'] = item['sum_current_qty']
+        
+        # Step 4: Combine the maps into a single shift_counter_map
+        shift_counter_map = {}
+        for shift_id, data in ftop_shift_map.items():
+            shift_counter_map[shift_id] = data
+        for shift_id, data in standard_shift_map.items():
+            if shift_id in shift_counter_map:
+                # Shouldn't happen (a shift should only have one counter type), but handle it
+                print(f"Warning: Shift {shift_id} has both ftop and standard counter events")
+                shift_counter_map[shift_id].update(data)
+            else:
+                shift_counter_map[shift_id] = data
         
         events = []
         
@@ -100,7 +245,11 @@ def get_member_history(member_id):
         
         if shifts:
             for shift in shifts:
-                events.append({
+                shift_id = shift.get('shift_id')
+                if isinstance(shift_id, list):
+                    shift_id = shift_id[0]
+                
+                shift_event = {
                     'type': 'shift',
                     'id': shift.get('id'),
                     'date': shift.get('date_begin'),
@@ -109,7 +258,32 @@ def get_member_history(member_id):
                     'is_late': shift.get('is_late', False),
                     'week_number': shift.get('week_number'),
                     'week_name': shift.get('week_name')
-                })
+                }
+                
+                if shift_id and shift_id in shift_counter_map:
+                    shift_event['counter'] = shift_counter_map[shift_id]
+                
+                events.append(shift_event)
+        
+        if counter_events:
+            for counter_event in counter_events:
+                shift_id = counter_event.get('shift_id')
+                if shift_id and isinstance(shift_id, list):
+                    shift_id = shift_id[0]
+                
+                is_manual = counter_event.get('is_manual', False)
+                if is_manual or not shift_id:
+                    events.append({
+                        'type': 'counter',
+                        'id': counter_event.get('id'),
+                        'date': counter_event.get('create_date'),
+                        'point_qty': counter_event.get('point_qty', 0),
+                        'sum_current_qty': counter_event.get('sum_current_qty', 0),
+                        'ftop_total': counter_event.get('ftop_total', 0),
+                        'standard_total': counter_event.get('standard_total', 0),
+                        'name': counter_event.get('name', ''),
+                        'counter_type': counter_event.get('type', '')
+                    })
         
         events.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
         

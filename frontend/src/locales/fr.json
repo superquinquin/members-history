@@ -52,5 +52,14 @@
     "switch": "Changer de langue",
     "en": "English",
     "fr": "Français"
+  },
+  "counter": {
+    "manual": "Ajustement Manuel de Points",
+    "points": "Points",
+    "total": "Total",
+    "ftop": "Compteur Vacation",
+    "standard": "Compteur ABCD",
+    "ftop_short": "Vacation",
+    "standard_short": "ABCD"
   }
 }

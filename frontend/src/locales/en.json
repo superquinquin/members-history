@@ -52,5 +52,14 @@
     "switch": "Switch language",
     "en": "English",
     "fr": "Français"
+  },
+  "counter": {
+    "manual": "Manual Point Adjustment",
+    "points": "Points",
+    "total": "Total",
+    "ftop": "FTOP Counter",
+    "standard": "ABCD Counter",
+    "ftop_short": "FTOP",
+    "standard_short": "ABCD"
   }
 }
