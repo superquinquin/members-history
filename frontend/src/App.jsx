@@ -476,9 +476,28 @@ function App() {
                                   if (event.type === 'leave_start') return t('timeline.leaveStart')
                                   if (event.type === 'leave_end') return t('timeline.leaveEnd')
                                   if (event.type === 'counter') return t('counter.manual')
-                                  if (event.type === 'shift' && event.state === 'done') return t('timeline.shiftAttended')
-                                  if (event.type === 'shift' && event.state === 'absent') return t('timeline.shiftMissed')
-                                  if (event.type === 'shift' && event.state === 'excused') return t('timeline.shiftExcused')
+                                  
+                  // Shift events - check shift type
+                  if (event.type === 'shift') {
+                    const isFtop = event.shift_type === 'ftop'
+                    
+                    // FTOP shifts: always show "FTOP shift closed" regardless of state
+                    if (isFtop) {
+                      return t('timeline.ftopShiftAttended')
+                    }
+                    
+                    // Standard shifts: show state-specific labels
+                    if (event.state === 'done') {
+                      return t('timeline.shiftAttended')
+                    }
+                    if (event.state === 'absent') {
+                      return t('timeline.shiftMissed')
+                    }
+                    if (event.state === 'excused') {
+                      return t('timeline.shiftExcused')
+                    }
+                  }
+                                  
                                   return event.type
                                 }
                                 
@@ -492,6 +511,11 @@ function App() {
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
                                           <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                                          {event.shift_type === 'unknown' && (
+                                            <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
+                                              ⚠️ {t('timeline.shiftTypeWarning')}
+                                            </span>
+                                          )}
                                           {event.duringLeave && (
                                             <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
                                               {t('timeline.duringLeave')}
