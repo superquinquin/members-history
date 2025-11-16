@@ -2,10 +2,20 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
+import logging
 from typing import Dict, Optional, Any, Tuple
 from odoo_client import OdooClient
+from utils import extract_id, extract_name, is_valid_many2one, validate_positive_int
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -41,10 +51,7 @@ def test_odoo_connection():
                 }
             ), 500
     except Exception as e:
-        print(f"Error testing Odoo connection: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error testing Odoo connection: {e}", exc_info=True)
         return jsonify(
             {"status": "failed", "error": str(e), "authenticated": False}
         ), 500
@@ -56,12 +63,16 @@ def search_members():
     if not name:
         return jsonify({"error": "Name parameter is required"}), 400
 
+    # Validate name length
+    if len(name) > 100:
+        return jsonify({"error": "Name parameter too long (max 100 characters)"}), 400
+
     try:
         members = odoo.search_members_by_name(name)
-        print(f"Processing {len(members)} members")
+        logger.info(f"Processing {len(members)} members for search query: {name}")
         result = []
         for member in members:
-            print(f"Member data: {member}")
+            logger.debug(f"Member data: {member}")
             address_parts = [
                 member.get("street"),
                 member.get("street2"),
@@ -88,10 +99,7 @@ def search_members():
 
         return jsonify({"members": result})
     except Exception as e:
-        print(f"Error searching members: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error searching members: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -103,6 +111,12 @@ def get_member_status(member_id):
     Returns cooperative_state, shift_type, and other status fields
     that indicate the member's current standing in the cooperative.
     """
+    # Validate member_id
+    try:
+        member_id = validate_positive_int(member_id, "member_id")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     try:
         status = odoo.get_member_status(member_id)
 
@@ -121,10 +135,7 @@ def get_member_status(member_id):
             }
         )
     except Exception as e:
-        print(f"Error fetching member status: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error fetching member status for member {member_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
@@ -163,16 +174,22 @@ def determine_shift_type(
     # Fallback: Use counter event type (if shift_type_id missing)
     if shift_id and shift_id in shift_counter_map:
         counter_type = shift_counter_map[shift_id].get("type", "standard")
-        print(f"Warning: Using counter type as fallback for shift {shift_id}")
+        logger.warning(f"Using counter type as fallback for shift {shift_id}")
         return (counter_type, None)
 
     # Last resort: Unknown
-    print(f"Warning: Cannot determine shift type for shift {shift.get('id')}")
+    logger.warning(f"Cannot determine shift type for shift {shift.get('id')}")
     return ("unknown", None)
 
 
 @app.route("/api/member/<int:member_id>/history", methods=["GET"])
 def get_member_history(member_id):
+    # Validate member_id
+    try:
+        member_id = validate_positive_int(member_id, "member_id")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     try:
         purchases = odoo.get_member_purchase_history(member_id)
         shifts = odoo.get_member_shift_history(member_id)
@@ -183,25 +200,21 @@ def get_member_history(member_id):
         try:
             counter_events = odoo.get_member_counter_events(member_id)
         except Exception as counter_error:
-            print(
-                f"Error fetching counter events (continuing without): {counter_error}"
+            logger.warning(
+                f"Error fetching counter events for member {member_id} (continuing without): {counter_error}",
+                exc_info=True
             )
-            import traceback
-
-            traceback.print_exc()
 
         try:
             # Fetch holidays for context (helps explain penalty variations)
             holidays = odoo.get_holidays()
         except Exception as holiday_error:
-            print(f"Error fetching holidays (continuing without): {holiday_error}")
-            import traceback
-
-            traceback.print_exc()
+            logger.warning(f"Error fetching holidays (continuing without): {holiday_error}", exc_info=True)
 
         # Sort counter events chronologically (oldest first) for proper aggregation
+        # Handle missing create_date gracefully
         counter_events_sorted = sorted(
-            counter_events, key=lambda x: x.get("create_date", "")
+            counter_events, key=lambda x: x.get("create_date") or "1900-01-01"
         )
 
         # Step 1: Aggregate counter events by shift_id AND counter type
@@ -212,12 +225,10 @@ def get_member_history(member_id):
         standard_manual_events = []
 
         for counter_event in counter_events_sorted:
-            shift_id = counter_event.get("shift_id")
+            shift_id = extract_id(counter_event.get("shift_id"))
             counter_type = counter_event.get("type", "standard")
 
             if shift_id:
-                if isinstance(shift_id, list):
-                    shift_id = shift_id[0]
 
                 # Choose the right map based on counter type
                 shift_map = (
@@ -357,10 +368,14 @@ def get_member_history(member_id):
         for shift_id, data in standard_shift_map.items():
             if shift_id in shift_counter_map:
                 # Shouldn't happen (a shift should only have one counter type), but handle it
-                print(
-                    f"Warning: Shift {shift_id} has both ftop and standard counter events"
+                logger.warning(
+                    f"Shift {shift_id} has both ftop and standard counter events - merging data"
                 )
-                shift_counter_map[shift_id].update(data)
+                # Merge point quantities instead of overwriting
+                shift_counter_map[shift_id]["point_qty"] += data.get("point_qty", 0)
+                # Keep the later create_date
+                if data.get("create_date", "") > shift_counter_map[shift_id].get("create_date", ""):
+                    shift_counter_map[shift_id]["create_date"] = data["create_date"]
             else:
                 shift_counter_map[shift_id] = data
 
@@ -380,9 +395,7 @@ def get_member_history(member_id):
 
         if shifts:
             for shift in shifts:
-                shift_id = shift.get("shift_id")
-                if isinstance(shift_id, list):
-                    shift_id = shift_id[0]
+                shift_id = extract_id(shift.get("shift_id"))
 
                 # Determine shift type
                 shift_type, shift_type_id = determine_shift_type(
@@ -426,9 +439,7 @@ def get_member_history(member_id):
 
         if counter_events:
             for counter_event in counter_events:
-                shift_id = counter_event.get("shift_id")
-                if shift_id and isinstance(shift_id, list):
-                    shift_id = shift_id[0]
+                shift_id = extract_id(counter_event.get("shift_id"))
 
                 is_manual = counter_event.get("is_manual", False)
                 if is_manual or not shift_id:
@@ -505,10 +516,7 @@ def get_member_history(member_id):
             }
         )
     except Exception as e:
-        print(f"Error fetching member history: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error fetching member history for member {member_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

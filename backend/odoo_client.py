@@ -1,6 +1,8 @@
 import xmlrpc.client
 import os
+import logging
 from typing import Optional, Dict, List, Any, cast
+from utils import extract_id, extract_name
 
 # Load environment variables from .env file
 try:
@@ -9,6 +11,9 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class OdooClient:
@@ -50,7 +55,7 @@ class OdooClient:
             return self.uid is not None
 
         except Exception as e:
-            print(f"Authentication failed: {e}")
+            logger.error(f"Authentication failed: {e}", exc_info=True)
             return False
 
     def execute(self, model: str, method: str, *args, **kwargs) -> Any:
@@ -100,7 +105,7 @@ class OdooClient:
             "image_medium",
         ]
         results = self.search_read("res.partner", domain, fields)
-        print(f"Odoo search results for '{name}': {results}")
+        logger.info(f"Search members by name '{name}': found {len(results)} results")
         return results
 
     def get_member_status(self, partner_id: int) -> Dict:
@@ -144,9 +149,10 @@ class OdooClient:
         )
 
         if results:
-            print(f"Member status for partner {partner_id}: {results[0].get('cooperative_state')}")
+            logger.info(f"Member status for partner {partner_id}: {results[0].get('cooperative_state')}")
             return results[0]
 
+        logger.warning(f"Member {partner_id} not found")
         return {}
 
     def get_member_purchase_history(
@@ -172,7 +178,7 @@ class OdooClient:
             {"fields": fields, "limit": limit, "order": "date_order desc"},
         )
 
-        print(f"Purchase history for partner {partner_id}: {len(results)} orders")
+        logger.info(f"Purchase history for partner {partner_id}: {len(results)} orders")
         return results
 
     def get_member_shift_history(self, partner_id: int, limit: int = 50) -> List[Dict]:
@@ -209,12 +215,12 @@ class OdooClient:
         )
 
         shift_ids = [
-            r["shift_id"][0]
-            if isinstance(r.get("shift_id"), list)
-            else r.get("shift_id")
+            extract_id(r.get("shift_id"))
             for r in results
             if r.get("shift_id")
         ]
+        # Filter out None values
+        shift_ids = [sid for sid in shift_ids if sid is not None]
 
         shifts = {}
         if shift_ids:
@@ -238,11 +244,7 @@ class OdooClient:
             shifts = {s["id"]: s for s in shift_results}
 
         for registration in results:
-            shift_id = (
-                registration["shift_id"][0]
-                if isinstance(registration.get("shift_id"), list)
-                else registration.get("shift_id")
-            )
+            shift_id = extract_id(registration.get("shift_id"))
             if shift_id and shift_id in shifts:
                 registration["shift_name"] = shifts[shift_id]["name"]
                 registration["week_number"] = shifts[shift_id].get("week_number")
@@ -254,7 +256,7 @@ class OdooClient:
                 registration["week_name"] = None
                 registration["shift_type_id"] = None
 
-        print(f"Shift history for partner {partner_id}: {len(results)} registrations")
+        logger.info(f"Shift history for partner {partner_id}: {len(results)} registrations")
         return results
 
     def get_member_leaves(self, partner_id: int) -> List[Dict]:
@@ -279,12 +281,9 @@ class OdooClient:
         )
 
         for leave in results:
-            if leave.get("type_id") and isinstance(leave["type_id"], list):
-                leave["leave_type"] = leave["type_id"][1]
-            else:
-                leave["leave_type"] = "Leave"
+            leave["leave_type"] = extract_name(leave.get("type_id")) or "Leave"
 
-        print(f"Leave history for partner {partner_id}: {len(results)} leaves")
+        logger.info(f"Leave history for partner {partner_id}: {len(results)} leaves")
         return results
 
     def get_member_counter_events(self, partner_id: int, limit: int = 50) -> List[Dict]:
@@ -319,9 +318,7 @@ class OdooClient:
             {"fields": fields, "order": "create_date desc"},
         )
 
-        print(
-            f"Counter events for partner {partner_id}: {len(results)} events (raw from Odoo)"
-        )
+        logger.info(f"Counter events for partner {partner_id}: {len(results)} events")
         return results
 
     def get_holidays(self, start_date: str = None, end_date: str = None) -> List[Dict]:
@@ -373,7 +370,7 @@ class OdooClient:
             {"fields": fields, "order": "date_begin desc"},
         )
 
-        print(f"Found {len(results)} holidays")
+        logger.info(f"Found {len(results)} holidays")
         return results
 
     def get_holiday_for_date(self, date: str) -> Optional[Dict]:
@@ -430,5 +427,5 @@ class OdooClient:
         ]
         fields = ["id", "street", "street2", "zip", "city"]
         results = self.search_read("res.partner", domain, fields)
-        print(f"Found {len(results)} worker members with addresses")
+        logger.info(f"Found {len(results)} worker members with addresses")
         return results
