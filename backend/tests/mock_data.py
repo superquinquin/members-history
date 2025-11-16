@@ -66,8 +66,8 @@ FTOP_MEMBER_MIXED_SHIFTS = {
         {
             'id': 203,
             'create_date': '2025-01-25 12:00:00',
-            'point_qty': -1,
-            'sum_current_qty': 4,
+            'point_qty': -2,
+            'sum_current_qty': 3,
             'shift_id': [103, 'FTOP Friday 11:00'],
             'is_manual': False,
             'name': 'Shift missed',
@@ -236,12 +236,12 @@ EXPECTED_FTOP_MEMBER_RESPONSE = {
             'shift_type': 'ftop',
             'shift_type_id': [1, 'FTOP'],
             'counter': {
-                'point_qty': -1,
+                'point_qty': -2,
                 'create_date': '2025-01-25 12:00:00',
                 'type': 'ftop',
-                'ftop_total': 4,
+                'ftop_total': 3,
                 'standard_total': 3,
-                'sum_current_qty': 4
+                'sum_current_qty': 3
             }
         },
         {

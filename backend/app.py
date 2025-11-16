@@ -348,8 +348,15 @@ def get_member_history(member_id):
 
                 # Determine the date to use for this shift
                 event_date = shift.get("date_begin")
-                if shift_type == "ftop" and shift_id and shift_id in shift_counter_map:
-                    # For FTOP shifts with counter events, use counter event date (when shift was closed)
+
+                # For technical FTOP shifts (cycle closing), use counter event date (when shift was closed)
+                # Check shift_type_id to distinguish technical FTOP from Standard shifts attended by FTOP members
+                is_technical_ftop = False
+                if shift_type_id and isinstance(shift_type_id, list) and len(shift_type_id) > 1:
+                    type_name = shift_type_id[1].lower()
+                    is_technical_ftop = "ftop" in type_name or "volant" in type_name
+
+                if is_technical_ftop and shift_id and shift_id in shift_counter_map:
                     counter_date = shift_counter_map[shift_id].get("create_date")
                     if counter_date:
                         event_date = counter_date
@@ -361,6 +368,8 @@ def get_member_history(member_id):
                     "shift_name": shift.get("shift_name"),
                     "state": shift.get("state"),
                     "is_late": shift.get("is_late", False),
+                    "is_exchanged": shift.get("is_exchanged", False),
+                    "is_exchange": shift.get("is_exchange", False),
                     "week_number": shift.get("week_number"),
                     "week_name": shift.get("week_name"),
                     "shift_type": shift_type,

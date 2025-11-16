@@ -141,7 +141,16 @@ class OdooClient:
             ("partner_id", "=", partner_id),
             ("state", "in", ["done", "absent", "excused", "open"]),
         ]
-        fields = ["id", "date_begin", "date_end", "state", "shift_id", "is_late"]
+        fields = [
+            "id",
+            "date_begin",
+            "date_end",
+            "state",
+            "shift_id",
+            "is_late",
+            "is_exchanged",
+            "is_exchange",
+        ]
 
         results = self.models.execute_kw(
             self.db,
