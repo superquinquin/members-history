@@ -103,6 +103,52 @@ class OdooClient:
         print(f"Odoo search results for '{name}': {results}")
         return results
 
+    def get_member_status(self, partner_id: int) -> Dict:
+        """
+        Get member status and state information.
+
+        Fetches cooperative_state, shift_type, and related fields
+        that indicate member's current standing and participation type.
+
+        Args:
+            partner_id: Member ID
+
+        Returns:
+            Dictionary with status fields
+        """
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+
+        fields = [
+            "id",
+            "name",
+            "cooperative_state",
+            "is_worker_member",
+            "shift_type",
+            "is_unsubscribed",
+            "customer",
+        ]
+
+        results = self.models.execute_kw(
+            self.db,
+            self.uid,
+            self.password,
+            "res.partner",
+            "read",
+            [[partner_id]],
+            {"fields": fields},
+        )
+
+        if results:
+            print(f"Member status for partner {partner_id}: {results[0].get('cooperative_state')}")
+            return results[0]
+
+        return {}
+
     def get_member_purchase_history(
         self, partner_id: int, limit: int = 50
     ) -> List[Dict]:
@@ -277,6 +323,104 @@ class OdooClient:
             f"Counter events for partner {partner_id}: {len(results)} events (raw from Odoo)"
         )
         return results
+
+    def get_holidays(self, start_date: str = None, end_date: str = None) -> List[Dict]:
+        """
+        Get holiday periods (shift.holiday - "Assouplissement de présence").
+
+        These holidays provide penalty relief for missed shifts.
+
+        Args:
+            start_date: Optional start date filter (ISO format)
+            end_date: Optional end date filter (ISO format)
+
+        Returns:
+            List of holiday records with relief information
+        """
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+
+        # Fetch active/confirmed holidays
+        domain = [("state", "in", ["confirmed", "done"])]
+
+        # Add date filters if provided
+        if start_date:
+            domain.append(("date_end", ">=", start_date))
+        if end_date:
+            domain.append(("date_begin", "<=", end_date))
+
+        fields = [
+            "id",
+            "name",
+            "holiday_type",
+            "date_begin",
+            "date_end",
+            "state",
+            "make_up_type",
+        ]
+
+        results = self.models.execute_kw(
+            self.db,
+            self.uid,
+            self.password,
+            "shift.holiday",
+            "search_read",
+            [domain],
+            {"fields": fields, "order": "date_begin desc"},
+        )
+
+        print(f"Found {len(results)} holidays")
+        return results
+
+    def get_holiday_for_date(self, date: str) -> Optional[Dict]:
+        """
+        Check if a specific date falls within a holiday period.
+
+        Args:
+            date: Date to check (ISO format YYYY-MM-DD)
+
+        Returns:
+            Holiday record if date is within a holiday, None otherwise
+        """
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+
+        domain = [
+            ("state", "in", ["confirmed", "done"]),
+            ("date_begin", "<=", date),
+            ("date_end", ">=", date),
+        ]
+
+        fields = [
+            "id",
+            "name",
+            "holiday_type",
+            "date_begin",
+            "date_end",
+            "make_up_type",
+        ]
+
+        results = self.models.execute_kw(
+            self.db,
+            self.uid,
+            self.password,
+            "shift.holiday",
+            "search_read",
+            [domain],
+            {"fields": fields, "limit": 1},
+        )
+
+        if results:
+            return results[0]
+        return None
 
     def get_worker_members_addresses(self) -> List[Dict]:
         """Fetch addresses of worker members only (no personal data)"""

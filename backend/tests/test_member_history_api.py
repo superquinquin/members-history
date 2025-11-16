@@ -396,3 +396,130 @@ class TestMemberHistoryAPI:
         assert shift_events[0]["shift_type"] == "standard", (
             "shift_type_id should take precedence"
         )
+
+    def test_leave_timeline_events(self, client, mock_odoo_client, mocker):
+        """
+        Test that leave periods generate timeline start/end events.
+
+        Per spec Section 5.4, each leave should create two timeline events:
+        - leave_start with reference to end date
+        - leave_end with reference to start date
+        """
+        mock_leaves = [
+            {
+                "id": 301,
+                "start_date": "2025-07-01",
+                "stop_date": "2025-07-14",
+                "type_id": [1, "Vacation"],
+                "leave_type": "Vacation",
+                "state": "done",
+            }
+        ]
+
+        mock_odoo_client.get_member_purchase_history.return_value = []
+        mock_odoo_client.get_member_shift_history.return_value = []
+        mock_odoo_client.get_member_leaves.return_value = mock_leaves
+        mock_odoo_client.get_member_counter_events.return_value = []
+        mock_odoo_client.get_holidays.return_value = []
+
+        mocker.patch("app.odoo", mock_odoo_client)
+
+        response = client.get("/api/member/130/history")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        # Check for leave_start event
+        leave_start_events = [e for e in data["events"] if e["type"] == "leave_start"]
+        assert len(leave_start_events) == 1
+        assert leave_start_events[0]["date"] == "2025-07-01"
+        assert leave_start_events[0]["leave_type"] == "Vacation"
+        assert leave_start_events[0]["leave_end"] == "2025-07-14"
+        assert leave_start_events[0]["leave_id"] == 301
+
+        # Check for leave_end event
+        leave_end_events = [e for e in data["events"] if e["type"] == "leave_end"]
+        assert len(leave_end_events) == 1
+        assert leave_end_events[0]["date"] == "2025-07-14"
+        assert leave_end_events[0]["leave_type"] == "Vacation"
+        assert leave_end_events[0]["leave_start"] == "2025-07-01"
+        assert leave_end_events[0]["leave_id"] == 301
+
+        # Check that raw leave periods are still included for backward compatibility
+        assert "leaves" in data
+        assert len(data["leaves"]) == 1
+
+    def test_open_ended_leave(self, client, mock_odoo_client, mocker):
+        """
+        Test open-ended leave (no stop_date).
+
+        Should only create leave_start event, not leave_end.
+        """
+        mock_leaves = [
+            {
+                "id": 302,
+                "start_date": "2025-08-01",
+                "stop_date": False,  # Open-ended
+                "type_id": [2, "Sick Leave"],
+                "leave_type": "Sick Leave",
+                "state": "done",
+            }
+        ]
+
+        mock_odoo_client.get_member_purchase_history.return_value = []
+        mock_odoo_client.get_member_shift_history.return_value = []
+        mock_odoo_client.get_member_leaves.return_value = mock_leaves
+        mock_odoo_client.get_member_counter_events.return_value = []
+        mock_odoo_client.get_holidays.return_value = []
+
+        mocker.patch("app.odoo", mock_odoo_client)
+
+        response = client.get("/api/member/131/history")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        # Should have leave_start but no leave_end
+        leave_start_events = [e for e in data["events"] if e["type"] == "leave_start"]
+        assert len(leave_start_events) == 1
+        assert leave_start_events[0]["leave_end"] is False
+
+        leave_end_events = [e for e in data["events"] if e["type"] == "leave_end"]
+        assert len(leave_end_events) == 0
+
+    def test_holidays_included_in_response(self, client, mock_odoo_client, mocker):
+        """
+        Test that holidays are included in member history response.
+
+        Holidays provide context for penalty variations.
+        """
+        mock_holidays = [
+            {
+                "id": 401,
+                "name": "Christmas Period",
+                "holiday_type": "long_period",
+                "date_begin": "2025-12-20",
+                "date_end": "2025-12-27",
+                "state": "confirmed",
+                "make_up_type": "0_make_up",  # Full relief
+            }
+        ]
+
+        mock_odoo_client.get_member_purchase_history.return_value = []
+        mock_odoo_client.get_member_shift_history.return_value = []
+        mock_odoo_client.get_member_leaves.return_value = []
+        mock_odoo_client.get_member_counter_events.return_value = []
+        mock_odoo_client.get_holidays.return_value = mock_holidays
+
+        mocker.patch("app.odoo", mock_odoo_client)
+
+        response = client.get("/api/member/132/history")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        # Holidays should be included in response
+        assert "holidays" in data
+        assert len(data["holidays"]) == 1
+        assert data["holidays"][0]["name"] == "Christmas Period"
+        assert data["holidays"][0]["make_up_type"] == "0_make_up"

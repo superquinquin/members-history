@@ -95,6 +95,39 @@ def search_members():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/member/<int:member_id>/status", methods=["GET"])
+def get_member_status(member_id):
+    """
+    Get member status information.
+
+    Returns cooperative_state, shift_type, and other status fields
+    that indicate the member's current standing in the cooperative.
+    """
+    try:
+        status = odoo.get_member_status(member_id)
+
+        if not status:
+            return jsonify({"error": "Member not found"}), 404
+
+        return jsonify(
+            {
+                "member_id": member_id,
+                "name": status.get("name"),
+                "cooperative_state": status.get("cooperative_state"),
+                "is_worker_member": status.get("is_worker_member", False),
+                "shift_type": status.get("shift_type"),
+                "is_unsubscribed": status.get("is_unsubscribed", False),
+                "customer": status.get("customer", False),
+            }
+        )
+    except Exception as e:
+        print(f"Error fetching member status: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 def determine_shift_type(
     shift: Dict, shift_counter_map: Dict, shift_id: Optional[int]
 ) -> Tuple[str, Any]:
@@ -145,6 +178,7 @@ def get_member_history(member_id):
         shifts = odoo.get_member_shift_history(member_id)
         leaves = odoo.get_member_leaves(member_id)
         counter_events = []
+        holidays = []
 
         try:
             counter_events = odoo.get_member_counter_events(member_id)
@@ -152,6 +186,15 @@ def get_member_history(member_id):
             print(
                 f"Error fetching counter events (continuing without): {counter_error}"
             )
+            import traceback
+
+            traceback.print_exc()
+
+        try:
+            # Fetch holidays for context (helps explain penalty variations)
+            holidays = odoo.get_holidays()
+        except Exception as holiday_error:
+            print(f"Error fetching holidays (continuing without): {holiday_error}")
             import traceback
 
             traceback.print_exc()
@@ -403,23 +446,63 @@ def get_member_history(member_id):
                         }
                     )
 
-        events.sort(key=lambda x: x["date"] if x["date"] else "", reverse=True)
-
+        # Generate leave timeline events (start and end markers)
+        # Per spec Section 5.4: two events per leave
         leave_periods = []
         if leaves:
             for leave in leaves:
+                leave_id = leave.get("id")
+                leave_type = leave.get("leave_type", "Leave")
+                start_date = leave.get("start_date")
+                stop_date = leave.get("stop_date")
+
+                # Create leave_start event
+                if start_date:
+                    events.append(
+                        {
+                            "type": "leave_start",
+                            "id": leave_id,
+                            "date": start_date,
+                            "leave_type": leave_type,
+                            "leave_end": stop_date,  # Reference to end date
+                            "leave_id": leave_id,
+                        }
+                    )
+
+                # Create leave_end event (if not open-ended)
+                if stop_date:
+                    events.append(
+                        {
+                            "type": "leave_end",
+                            "id": leave_id,
+                            "date": stop_date,
+                            "leave_type": leave_type,
+                            "leave_start": start_date,  # Reference to start date
+                            "leave_id": leave_id,
+                        }
+                    )
+
+                # Keep raw leave periods for backward compatibility
                 leave_periods.append(
                     {
-                        "id": leave.get("id"),
-                        "start_date": leave.get("start_date"),
-                        "stop_date": leave.get("stop_date"),
-                        "leave_type": leave.get("leave_type"),
+                        "id": leave_id,
+                        "start_date": start_date,
+                        "stop_date": stop_date,
+                        "leave_type": leave_type,
                         "state": leave.get("state"),
                     }
                 )
 
+        # Sort all events chronologically (most recent first)
+        events.sort(key=lambda x: x["date"] if x["date"] else "", reverse=True)
+
         return jsonify(
-            {"member_id": member_id, "events": events, "leaves": leave_periods}
+            {
+                "member_id": member_id,
+                "events": events,
+                "leaves": leave_periods,
+                "holidays": holidays,
+            }
         )
     except Exception as e:
         print(f"Error fetching member history: {e}")

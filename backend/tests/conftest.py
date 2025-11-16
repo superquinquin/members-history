@@ -25,6 +25,8 @@ def mock_odoo_client(mocker):
     mock = mocker.MagicMock(spec=OdooClient)
     mock.uid = 1
     mock.authenticate.return_value = True
+    # Default empty holidays for tests that don't explicitly mock it
+    mock.get_holidays.return_value = []
     return mock
 
 
