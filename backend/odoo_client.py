@@ -191,7 +191,7 @@ class OdooClient:
 
         domain = [
             ("partner_id", "=", partner_id),
-            ("state", "in", ["done", "absent", "excused", "open"]),
+            ("state", "in", ["done", "absent", "excused", "open", "waiting", "replaced"]),
         ]
         fields = [
             "id",
@@ -202,6 +202,10 @@ class OdooClient:
             "is_late",
             "is_exchanged",
             "is_exchange",
+            "exchange_state",
+            "exchange_replacing_reg_id",
+            "exchange_replaced_reg_id",
+            "replaced_reg_id",  # Legacy field - might still contain data
         ]
 
         results = self.models.execute_kw(

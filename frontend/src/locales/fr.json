@@ -32,6 +32,9 @@
     "shiftAttended": "Présence au Créneau",
     "shiftMissed": "Absence au Créneau",
     "shiftExcused": "Absence Excusée",
+    "shiftExchanged": "Créneau Échangé",
+    "shiftWaiting": "Échange en Attente",
+    "shiftReplaced": "Créneau Échangé",
     "ftopShiftAttended": "Clôture service volant",
     "ftopShiftMissed": "Clôture service volant",
     "ftopShiftExcused": "Clôture service volant",
@@ -61,9 +64,54 @@
     "manual": "Ajustement Manuel de Points",
     "points": "Points",
     "total": "Total",
-    "ftop": "Compteur Vacation",
-    "standard": "Compteur ABCD",
-    "ftop_short": "Vacation",
-    "standard_short": "ABCD"
+    "ftop": "Compteur Volant",
+    "standard": "Compteur Standard",
+    "ftop_short": "Volant",
+    "standard_short": "Standard",
+    "noData": "Pas de données",
+    "ftopPositive": "Crédit accumulé",
+    "ftopZero": "Équilibré",
+    "ftopNegative": "Services requis",
+    "standardUpToDate": "À jour",
+    "standardNegative": "Rattrapage requis"
+  },
+  "status": {
+    "up_to_date": "À Jour",
+    "alert": "Alerte",
+    "suspended": "Suspendu",
+    "blocked": "Bloqué",
+    "delay": "Période de Sursis",
+    "canShop": "Peut Faire Courses",
+    "cannotShop": "Courses Bloquées"
+  },
+  "holiday": {
+    "duringHoliday": "Pendant période d'assouplissement",
+    "basePenalty": "Pénalité de base",
+    "relief": "Assouplissement",
+    "netPenalty": "Pénalité nette"
+  },
+  "shift": {
+    "exchanged": "Échangé",
+    "exchange": "Service de Remplacement",
+    "ftopCycleDeduction": "Déduction de Cycle (automatique)",
+    "ftopCycleExplanation": "Les membres volants contribuent 1 point par cycle automatiquement",
+    "ftopCycleDetail": "Effectuez des services pour regagner des points et créer un crédit"
+  },
+  "exchange": {
+    "details": "Détails de l'Échange",
+    "replacedWith": "Remplacé par :",
+    "replaces": "En remplacement de :",
+    "shift": "Service",
+    "state": "Statut",
+    "noPenaltyAttended": "Aucune pénalité - service de remplacement effectué",
+    "exchangedForReplacement": "Service d'origine échangé contre un autre service"
+  },
+  "leave": {
+    "period": "Période de Congé",
+    "duration": "Durée",
+    "day": "jour",
+    "days": "jours",
+    "noPenalty": "Les absences pendant le congé n'ont pas de pénalité",
+    "ftopPointUsed": "Utilise 1 point volant si disponible"
   }
 }

@@ -381,6 +381,63 @@ def get_member_history(member_id):
 
         events = []
 
+        # Collect all exchange-related registration IDs that need to be fetched
+        exchange_reg_ids = set()
+        if shifts:
+            for shift in shifts:
+                # Try new exchange fields first
+                replacing_id = extract_id(shift.get("exchange_replacing_reg_id"))
+                replaced_id = extract_id(shift.get("exchange_replaced_reg_id"))
+
+                # Fall back to legacy field if new fields are empty
+                legacy_replaced_id = extract_id(shift.get("replaced_reg_id"))
+
+                if replacing_id:
+                    exchange_reg_ids.add(replacing_id)
+                if replaced_id:
+                    exchange_reg_ids.add(replaced_id)
+                if legacy_replaced_id and not replaced_id:
+                    exchange_reg_ids.add(legacy_replaced_id)
+
+        # Batch fetch all exchange-related registrations
+        logger.info(f"Exchange reg IDs to fetch: {exchange_reg_ids}")
+        exchange_registrations = {}
+        if exchange_reg_ids:
+            try:
+                # Fetch specific fields for all registrations
+                reg_data = odoo.execute(
+                    "shift.registration",
+                    "read",
+                    list(exchange_reg_ids),
+                    fields=["id", "date_begin", "date_end", "shift_id", "partner_id", "state"]
+                )
+
+                # Also fetch shift details for these registrations
+                exchange_shift_ids = [extract_id(r.get("shift_id")) for r in reg_data if r.get("shift_id")]
+                exchange_shift_ids = [sid for sid in exchange_shift_ids if sid is not None]
+
+                exchange_shift_data = {}
+                if exchange_shift_ids:
+                    shift_results = odoo.execute(
+                        "shift.shift",
+                        "read",
+                        exchange_shift_ids,
+                        fields=["id", "name", "date_begin", "week_number", "week_name"]
+                    )
+                    exchange_shift_data = {s["id"]: s for s in shift_results}
+
+                # Map registration data with shift info
+                for reg in reg_data:
+                    shift_id = extract_id(reg.get("shift_id"))
+                    if shift_id and shift_id in exchange_shift_data:
+                        reg["shift_name"] = exchange_shift_data[shift_id]["name"]
+                        reg["shift_date"] = exchange_shift_data[shift_id]["date_begin"]
+                        reg["week_number"] = exchange_shift_data[shift_id].get("week_number")
+                        reg["week_name"] = exchange_shift_data[shift_id].get("week_name")
+                    exchange_registrations[reg["id"]] = reg
+            except Exception as e:
+                logger.warning(f"Failed to fetch exchange registration details: {e}")
+
         if purchases:
             for purchase in purchases:
                 events.append(
@@ -395,6 +452,13 @@ def get_member_history(member_id):
 
         if shifts:
             for shift in shifts:
+                # Debug: log exchange fields for waiting/replaced shifts
+                if shift.get("state") in ["waiting", "replaced"]:
+                    logger.info(f"Shift {shift.get('id')} state={shift.get('state')}: "
+                               f"replaced_reg_id={shift.get('replaced_reg_id')}, "
+                               f"exchange_replacing_reg_id={shift.get('exchange_replacing_reg_id')}, "
+                               f"exchange_replaced_reg_id={shift.get('exchange_replaced_reg_id')}")
+
                 shift_id = extract_id(shift.get("shift_id"))
 
                 # Determine shift type
@@ -434,6 +498,53 @@ def get_member_history(member_id):
 
                 if shift_id and shift_id in shift_counter_map:
                     shift_event["counter"] = shift_counter_map[shift_id]
+
+                # Add exchange details if this shift is part of an exchange
+                exchange_details = {}
+
+                # exchange_replacing_reg_id = The registration that is REPLACING this shift
+                # (i.e., this is the original shift that was exchanged away)
+                replacement_reg_id = extract_id(shift.get("exchange_replacing_reg_id"))
+                if not replacement_reg_id:
+                    # Fall back to legacy field
+                    replacement_reg_id = extract_id(shift.get("replaced_reg_id"))
+
+                if replacement_reg_id and replacement_reg_id in exchange_registrations:
+                    replacement_reg = exchange_registrations[replacement_reg_id]
+                    exchange_details["replacement_shift"] = {
+                        "date": replacement_reg.get("shift_date") or replacement_reg.get("date_begin"),
+                        "shift_name": replacement_reg.get("shift_name"),
+                        "week_number": replacement_reg.get("week_number"),
+                        "week_name": replacement_reg.get("week_name"),
+                    }
+
+                # exchange_replaced_reg_id = The registration that THIS shift is replacing
+                # (i.e., this is a replacement shift)
+                original_reg_id = extract_id(shift.get("exchange_replaced_reg_id"))
+                if original_reg_id and original_reg_id in exchange_registrations:
+                    original_reg = exchange_registrations[original_reg_id]
+                    exchange_details["original_shift"] = {
+                        "date": original_reg.get("shift_date") or original_reg.get("date_begin"),
+                        "shift_name": original_reg.get("shift_name"),
+                        "week_number": original_reg.get("week_number"),
+                        "week_name": original_reg.get("week_name"),
+                    }
+
+                # Add exchange state if available
+                exchange_state = shift.get("exchange_state")
+                if exchange_state:
+                    exchange_details["exchange_state"] = exchange_state
+
+                # Add counter impact explanation
+                if shift.get("is_exchange") and shift.get("state") == "done":
+                    exchange_details["counter_impact"] = "no_penalty_attended_replacement"
+                elif shift.get("is_exchanged") and replacing_reg_id and replacing_reg_id in exchange_registrations:
+                    replacement_reg = exchange_registrations[replacing_reg_id]
+                    # Check if replacement was attended (would need to check the registration state)
+                    exchange_details["counter_impact"] = "exchanged_for_replacement"
+
+                if exchange_details:
+                    shift_event["exchange_details"] = exchange_details
 
                 events.append(shift_event)
 

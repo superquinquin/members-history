@@ -523,3 +523,194 @@ class TestMemberHistoryAPI:
         assert len(data["holidays"]) == 1
         assert data["holidays"][0]["name"] == "Christmas Period"
         assert data["holidays"][0]["make_up_type"] == "0_make_up"
+
+    def test_exchange_details_with_relationships(self, client, mock_odoo_client, mocker):
+        """
+        Test shift exchange details with relationship information.
+
+        When a member exchanges their shift:
+        - Original shift (exchanged away) should have replacement_shift details
+        - Replacement shift should have original_shift details
+        - Exchange state should be included
+        - Counter impact should be explained
+        """
+        # Mock shifts with exchange relationships
+        mock_shifts = [
+            {
+                "id": 901,
+                "date_begin": "2025-02-15 14:00:00",
+                "state": "done",
+                "shift_id": [201, "BSat 14:00"],
+                "shift_name": "BSat 14:00",
+                "is_late": False,
+                "is_exchanged": True,  # This shift was exchanged away
+                "is_exchange": False,
+                "exchange_state": "replaced",
+                "exchange_replacing_reg_id": False,  # No original shift (this IS the original)
+                "exchange_replaced_reg_id": [902, "Replacement Registration"],  # Points to replacement
+                "week_number": 2,
+                "week_name": "B",
+                "shift_type_id": [2, "Standard"],
+            },
+            {
+                "id": 902,
+                "date_begin": "2025-02-20 16:00:00",
+                "state": "done",
+                "shift_id": [202, "CWed 16:00"],
+                "shift_name": "CWed 16:00",
+                "is_late": False,
+                "is_exchanged": False,
+                "is_exchange": True,  # This is a replacement shift
+                "exchange_state": "replacing",
+                "exchange_replacing_reg_id": [901, "Original Registration"],  # Points to original
+                "exchange_replaced_reg_id": False,  # No replacement (this IS the replacement)
+                "week_number": 3,
+                "week_name": "C",
+                "shift_type_id": [2, "Standard"],
+            },
+        ]
+
+        # Mock the execute method to return related shift registration data
+        def mock_execute(model, method, *args, **kwargs):
+            if model == "shift.registration" and method == "read":
+                reg_ids = args[0]
+                results = []
+                if 902 in reg_ids:
+                    # Return replacement shift data
+                    results.append({
+                        "id": 902,
+                        "date_begin": "2025-02-20 16:00:00",
+                        "date_end": "2025-02-20 18:00:00",
+                        "shift_id": [202, "CWed 16:00"]
+                    })
+                if 901 in reg_ids:
+                    # Return original shift data
+                    results.append({
+                        "id": 901,
+                        "date_begin": "2025-02-15 14:00:00",
+                        "date_end": "2025-02-15 16:00:00",
+                        "shift_id": [201, "BSat 14:00"]
+                    })
+                return results
+            elif model == "shift.shift" and method == "read":
+                shift_ids = args[0]
+                results = []
+                if 202 in shift_ids:
+                    results.append({
+                        "id": 202,
+                        "name": "CWed 16:00",
+                        "date_begin": "2025-02-20 16:00:00",
+                        "week_number": 3,
+                        "week_name": "C"
+                    })
+                if 201 in shift_ids:
+                    results.append({
+                        "id": 201,
+                        "name": "BSat 14:00",
+                        "date_begin": "2025-02-15 14:00:00",
+                        "week_number": 2,
+                        "week_name": "B"
+                    })
+                return results
+            return []
+
+        mock_counter_events = [
+            {
+                "id": 801,
+                "create_date": "2025-02-20 18:00:00",
+                "point_qty": 1,
+                "sum_current_qty": 0,
+                "shift_id": [202, "CWed 16:00"],
+                "is_manual": False,
+                "name": "Shift attended",
+                "type": "standard",
+            }
+        ]
+
+        mock_odoo_client.get_member_purchase_history.return_value = []
+        mock_odoo_client.get_member_shift_history.return_value = mock_shifts
+        mock_odoo_client.get_member_leaves.return_value = []
+        mock_odoo_client.get_member_counter_events.return_value = mock_counter_events
+        mock_odoo_client.get_holidays.return_value = []
+        mock_odoo_client.execute = mock_execute
+
+        mocker.patch("app.odoo", mock_odoo_client)
+
+        response = client.get("/api/member/133/history")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        shift_events = [e for e in data["events"] if e["type"] == "shift"]
+        assert len(shift_events) == 2
+
+        # Find exchanged shift (original)
+        exchanged_shift = next(e for e in shift_events if e["id"] == 901)
+        assert exchanged_shift["is_exchanged"] is True
+        assert "exchange_details" in exchanged_shift
+        assert "replacement_shift" in exchanged_shift["exchange_details"]
+        assert exchanged_shift["exchange_details"]["replacement_shift"]["date"] == "2025-02-20 16:00:00"
+        assert exchanged_shift["exchange_details"]["replacement_shift"]["shift_name"] == "CWed 16:00"
+        assert exchanged_shift["exchange_details"]["replacement_shift"]["week_name"] == "C"
+        assert exchanged_shift["exchange_details"]["exchange_state"] == "replaced"
+
+        # Find replacement shift
+        replacement_shift = next(e for e in shift_events if e["id"] == 902)
+        assert replacement_shift["is_exchange"] is True
+        assert "exchange_details" in replacement_shift
+        assert "original_shift" in replacement_shift["exchange_details"]
+        assert replacement_shift["exchange_details"]["original_shift"]["date"] == "2025-02-15 14:00:00"
+        assert replacement_shift["exchange_details"]["original_shift"]["shift_name"] == "BSat 14:00"
+        assert replacement_shift["exchange_details"]["original_shift"]["week_name"] == "B"
+        assert replacement_shift["exchange_details"]["exchange_state"] == "replacing"
+        assert replacement_shift["exchange_details"]["counter_impact"] == "no_penalty_attended_replacement"
+
+    def test_exchange_details_with_state_only(self, client, mock_odoo_client, mocker):
+        """
+        Test shift exchange with only exchange_state (no relationship IDs).
+
+        Some shifts may have exchange_state but no relationship fields populated.
+        This tests that we handle this gracefully.
+        """
+        mock_shifts = [
+            {
+                "id": 903,
+                "date_begin": "2025-03-10 14:00:00",
+                "state": "open",
+                "shift_id": [203, "DSat 14:00"],
+                "shift_name": "DSat 14:00",
+                "is_late": False,
+                "is_exchanged": False,
+                "is_exchange": False,
+                "exchange_state": "draft",  # Has state but no relationships
+                "exchange_replacing_reg_id": False,
+                "exchange_replaced_reg_id": False,
+                "week_number": 4,
+                "week_name": "D",
+                "shift_type_id": [2, "Standard"],
+            }
+        ]
+
+        mock_odoo_client.get_member_purchase_history.return_value = []
+        mock_odoo_client.get_member_shift_history.return_value = mock_shifts
+        mock_odoo_client.get_member_leaves.return_value = []
+        mock_odoo_client.get_member_counter_events.return_value = []
+        mock_odoo_client.get_holidays.return_value = []
+        mock_odoo_client.execute = lambda *args, **kwargs: []
+
+        mocker.patch("app.odoo", mock_odoo_client)
+
+        response = client.get("/api/member/134/history")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+
+        shift_events = [e for e in data["events"] if e["type"] == "shift"]
+        assert len(shift_events) == 1
+
+        shift = shift_events[0]
+        assert "exchange_details" in shift
+        assert shift["exchange_details"]["exchange_state"] == "draft"
+        # Should not have relationship fields
+        assert "replacement_shift" not in shift["exchange_details"]
+        assert "original_shift" not in shift["exchange_details"]

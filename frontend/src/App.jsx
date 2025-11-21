@@ -13,6 +13,8 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState(null)
   const [leaves, setLeaves] = useState([])
+  const [memberStatus, setMemberStatus] = useState(null)
+  const [holidays, setHolidays] = useState([])
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
@@ -50,21 +52,41 @@ function App() {
     setSelectedMember(member)
     setHistoryEvents([])
     setLeaves([])
+    setMemberStatus(null)
+    setHolidays([])
     setHistoryError(null)
     setHistoryLoading(true)
 
     try {
-      const response = await fetch(`${apiUrl}/api/member/${member.id}/history`)
-      const data = await response.json()
+      // Fetch member history (required)
+      const historyResponse = await fetch(`${apiUrl}/api/member/${member.id}/history`)
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch history')
+      if (!historyResponse.ok) {
+        const historyData = await historyResponse.json()
+        throw new Error(historyData.error || 'Failed to fetch history')
       }
 
-      setHistoryEvents(data.events || [])
-      setLeaves(data.leaves || [])
+      const historyData = await historyResponse.json()
+      setHistoryEvents(historyData.events || [])
+      setLeaves(historyData.leaves || [])
+      setHolidays(historyData.holidays || [])
+
+      // Fetch member status (optional - don't fail if this errors)
+      try {
+        const statusResponse = await fetch(`${apiUrl}/api/member/${member.id}/status`)
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json()
+          setMemberStatus(statusData)
+        } else {
+          console.warn('Failed to fetch member status, continuing without it')
+        }
+      } catch (statusErr) {
+        console.warn('Error fetching member status:', statusErr)
+        // Continue without status - it's not critical
+      }
     } catch (err) {
-      setHistoryError(err.message)
+      setHistoryError(err.message || 'An error occurred')
+      console.error('Error fetching member data:', err)
     } finally {
       setHistoryLoading(false)
     }
@@ -135,15 +157,29 @@ function App() {
 
   const isEventDuringLeave = (eventDate, leaves) => {
     if (!eventDate || !leaves || leaves.length === 0) return null
-    
+
     const eventDateStr = new Date(eventDate).toISOString().split('T')[0]
-    
+
     for (const leave of leaves) {
       if (eventDateStr >= leave.start_date && eventDateStr <= leave.stop_date) {
         return leave
       }
     }
-    
+
+    return null
+  }
+
+  const isEventDuringHoliday = (eventDate, holidays) => {
+    if (!eventDate || !holidays || holidays.length === 0) return null
+
+    const eventDateStr = new Date(eventDate).toISOString().split('T')[0]
+
+    for (const holiday of holidays) {
+      if (eventDateStr >= holiday.date_begin && eventDateStr <= holiday.date_end) {
+        return holiday
+      }
+    }
+
     return null
   }
 
@@ -389,7 +425,156 @@ function App() {
                   <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
                     📊 {t('history.title', { name: selectedMember.name })}
                   </h2>
-                  <p className="text-purple-700">{t('history.memberId')} {selectedMember.id}</p>
+                  <p className="text-purple-700 mb-3">{t('history.memberId')} {selectedMember.id}</p>
+
+                  {/* Member Status Badges */}
+                  {memberStatus && (
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {/* Cooperative State Badge */}
+                      {memberStatus.cooperative_state && (
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                          memberStatus.cooperative_state === 'up_to_date' ? 'bg-green-100 text-green-800 border border-green-300' :
+                          memberStatus.cooperative_state === 'alert' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                          memberStatus.cooperative_state === 'suspended' || memberStatus.cooperative_state === 'blocked' ? 'bg-red-100 text-red-800 border border-red-300' :
+                          memberStatus.cooperative_state === 'delay' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                          'bg-gray-100 text-gray-800 border border-gray-300'
+                        }`}>
+                          {memberStatus.cooperative_state === 'up_to_date' && '✓'}
+                          {memberStatus.cooperative_state === 'alert' && '⚠️'}
+                          {memberStatus.cooperative_state === 'suspended' && '🚫'}
+                          {memberStatus.cooperative_state === 'blocked' && '🚫'}
+                          {memberStatus.cooperative_state === 'delay' && '⏱️'}
+                          {' '}
+                          {t(`status.${memberStatus.cooperative_state}`)}
+                        </span>
+                      )}
+
+                      {/* Shift Type Badge */}
+                      {memberStatus.shift_type && (
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                          memberStatus.shift_type === 'ftop' ? 'bg-purple-100 text-purple-800 border border-purple-300' :
+                          'bg-blue-100 text-blue-800 border border-blue-300'
+                        }`}>
+                          {memberStatus.shift_type === 'ftop' ? '⏱️' : '📅'}
+                          {' '}
+                          {memberStatus.shift_type === 'ftop' ? t('counter.ftop') : t('counter.standard')}
+                        </span>
+                      )}
+
+                      {/* Shopping Privileges */}
+                      {memberStatus.customer !== undefined && (
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                          memberStatus.customer ? 'bg-green-100 text-green-800 border border-green-300' :
+                          'bg-gray-100 text-gray-800 border border-gray-300'
+                        }`}>
+                          {memberStatus.customer ? '🛒' : '🚫'}
+                          {' '}
+                          {memberStatus.customer ? t('status.canShop') : t('status.cannotShop')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Counter Summary Widget */}
+                  {historyEvents.length > 0 && (
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {(() => {
+                        // Find the most recent counter totals from events
+                        let latestFtopTotal = null
+                        let latestStandardTotal = null
+
+                        // Iterate through events to find the latest counter values
+                        for (const event of historyEvents) {
+                          if (event.type === 'shift' && event.counter) {
+                            if (event.counter.ftop_total !== undefined) {
+                              if (latestFtopTotal === null) latestFtopTotal = event.counter.ftop_total
+                            }
+                            if (event.counter.standard_total !== undefined) {
+                              if (latestStandardTotal === null) latestStandardTotal = event.counter.standard_total
+                            }
+                          }
+                          if (event.type === 'counter') {
+                            if (event.counter_type === 'ftop' && event.ftop_total !== undefined) {
+                              if (latestFtopTotal === null) latestFtopTotal = event.ftop_total
+                            }
+                            if (event.counter_type === 'standard' && event.standard_total !== undefined) {
+                              if (latestStandardTotal === null) latestStandardTotal = event.standard_total
+                            }
+                          }
+                        }
+
+                        const getCounterStatusColor = (value, isFtop) => {
+                          if (value === null || value === undefined) return 'text-gray-600'
+                          if (isFtop) {
+                            // FTOP counter can be positive (encouraged!)
+                            if (value > 0) return 'text-green-600'
+                            if (value === 0) return 'text-blue-600'
+                            return 'text-orange-600'
+                          } else {
+                            // Standard counter should be 0
+                            if (value === 0) return 'text-green-600'
+                            return 'text-red-600'
+                          }
+                        }
+
+                        const getCounterStatus = (value, isFtop) => {
+                          if (value === null || value === undefined) return t('counter.noData')
+                          if (isFtop) {
+                            if (value > 0) return t('counter.ftopPositive')
+                            if (value === 0) return t('counter.ftopZero')
+                            return t('counter.ftopNegative')
+                          } else {
+                            if (value === 0) return t('counter.standardUpToDate')
+                            return t('counter.standardNegative')
+                          }
+                        }
+
+                        return (
+                          <>
+                            {/* FTOP Counter */}
+                            {latestFtopTotal !== null && (
+                              <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-purple-200">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl">⏱️</span>
+                                    <div>
+                                      <div className="text-xs text-gray-500 font-medium">{t('counter.ftop')}</div>
+                                      <div className={`text-2xl font-bold ${getCounterStatusColor(latestFtopTotal, true)}`}>
+                                        {latestFtopTotal > 0 && '+'}{latestFtopTotal}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-gray-500 text-right">
+                                    {getCounterStatus(latestFtopTotal, true)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Standard Counter */}
+                            {latestStandardTotal !== null && (
+                              <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-200">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl">📅</span>
+                                    <div>
+                                      <div className="text-xs text-gray-500 font-medium">{t('counter.standard')}</div>
+                                      <div className={`text-2xl font-bold ${getCounterStatusColor(latestStandardTotal, false)}`}>
+                                        {latestStandardTotal > 0 && '+'}{latestStandardTotal}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-gray-500 text-right">
+                                    {getCounterStatus(latestStandardTotal, false)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {historyLoading ? (
@@ -446,9 +631,16 @@ function App() {
                                   if (event.type === 'leave_start') return '🏖️'
                                   if (event.type === 'leave_end') return '🔙'
                                   if (event.type === 'counter') return '⚖️'
+
+                                  // Check for technical FTOP shift (cycle deduction)
+                                  if (event.type === 'shift' && event.shift_type === 'ftop' && event.state === 'done' && event.counter && event.counter.point_qty === -1) {
+                                    return '⚙️'
+                                  }
+
                                   if (event.type === 'shift' && event.state === 'done') return '🎯'
                                   if (event.type === 'shift' && event.state === 'absent') return '❌'
                                   if (event.type === 'shift' && event.state === 'excused') return '✓'
+                                  if (event.type === 'shift' && (event.state === 'waiting' || event.state === 'replaced')) return '🔄'
                                   return '📋'
                                 }
                                 
@@ -461,6 +653,12 @@ function App() {
                                     if (event.point_qty < 0) return 'from-red-500 to-rose-500'
                                     return 'from-gray-500 to-slate-500'
                                   }
+
+                                  // Check for technical FTOP shift (cycle deduction) - use neutral color
+                                  if (event.type === 'shift' && event.shift_type === 'ftop' && event.state === 'done' && event.counter && event.counter.point_qty === -1) {
+                                    return 'from-gray-500 to-slate-500'
+                                  }
+
                                   if (event.type === 'shift' && event.state === 'done') return 'from-green-500 to-emerald-500'
                                   if (event.type === 'shift' && event.state === 'absent') {
                                     return event.duringLeave ? 'from-gray-400 to-gray-500' : 'from-red-500 to-rose-500'
@@ -468,6 +666,8 @@ function App() {
                                   if (event.type === 'shift' && event.state === 'excused') {
                                     return event.duringLeave ? 'from-gray-400 to-gray-500' : 'from-blue-500 to-cyan-500'
                                   }
+                                  if (event.type === 'shift' && event.state === 'waiting') return 'from-orange-500 to-amber-500'
+                                  if (event.type === 'shift' && event.state === 'replaced') return 'from-orange-500 to-amber-500'
                                   return 'from-gray-500 to-slate-500'
                                 }
                                 
@@ -476,28 +676,37 @@ function App() {
                                   if (event.type === 'leave_start') return t('timeline.leaveStart')
                                   if (event.type === 'leave_end') return t('timeline.leaveEnd')
                                   if (event.type === 'counter') return t('counter.manual')
-                                  
-                  // Shift events - check shift type
-                  if (event.type === 'shift') {
-                    const isFtop = event.shift_type === 'ftop'
-                    
-                    // FTOP shifts: always show "FTOP shift closed" regardless of state
-                    if (isFtop) {
-                      return t('timeline.ftopShiftAttended')
-                    }
-                    
-                    // Standard shifts: show state-specific labels
-                    if (event.state === 'done') {
-                      return t('timeline.shiftAttended')
-                    }
-                    if (event.state === 'absent') {
-                      return t('timeline.shiftMissed')
-                    }
-                    if (event.state === 'excused') {
-                      return t('timeline.shiftExcused')
-                    }
-                  }
-                                  
+
+                                  // Shift events - check shift type
+                                  if (event.type === 'shift') {
+                                    const isFtop = event.shift_type === 'ftop'
+
+                                    // Check for technical FTOP shift (cycle deduction)
+                                    if (isFtop && event.state === 'done' && event.counter && event.counter.point_qty === -1) {
+                                      return t('shift.ftopCycleDeduction')
+                                    }
+
+                                    // FTOP shifts: always show "FTOP shift closed" regardless of state
+                                    if (isFtop) {
+                                      return t('timeline.ftopShiftAttended')
+                                    }
+
+                                    // Standard shifts: show state-specific labels
+                                    if (event.state === 'done') {
+                                      return t('timeline.shiftAttended')
+                                    }
+                                    if (event.state === 'absent') {
+                                      return t('timeline.shiftMissed')
+                                    }
+                                    if (event.state === 'excused') {
+                                      return t('timeline.shiftExcused')
+                                    }
+                                    // Show "Shift Exchanged" for both waiting and replaced states
+                                    if (event.state === 'waiting' || event.state === 'replaced') {
+                                      return t('timeline.shiftExchanged')
+                                    }
+                                  }
+
                                   return event.type
                                 }
                                 
@@ -507,7 +716,13 @@ function App() {
                                       {getEventIcon()}
                                     </div>
                                     
-                                    <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${(event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' : event.type === 'counter' ? (event.point_qty > 0 ? 'border-green-400' : event.point_qty < 0 ? 'border-red-400' : 'border-gray-400') : event.duringLeave ? 'border-yellow-300 bg-yellow-50' : 'border-purple-200'}`}>
+                                    <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${
+                                      (event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' :
+                                      event.type === 'counter' ? (event.point_qty > 0 ? 'border-green-400' : event.point_qty < 0 ? 'border-red-400' : 'border-gray-400') :
+                                      event.type === 'shift' && (event.is_exchanged || event.is_exchange) ? 'border-orange-300 bg-orange-50' :
+                                      event.duringLeave ? 'border-yellow-300 bg-yellow-50' :
+                                      'border-purple-200'
+                                    }`}>
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
                                           <span className="font-semibold text-gray-900">{getEventTitle()}</span>
@@ -521,6 +736,16 @@ function App() {
                                               {t('timeline.duringLeave')}
                                             </span>
                                           )}
+                                          {event.type === 'shift' && event.is_exchanged && (
+                                            <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
+                                              🔄 {t('shift.exchanged')}
+                                            </span>
+                                          )}
+                                          {event.type === 'shift' && event.is_exchange && (
+                                            <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
+                                              ↔️ {t('shift.exchange')}
+                                            </span>
+                                          )}
                                         </div>
                                         <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
                                       </div>
@@ -531,18 +756,47 @@ function App() {
                                       )}
                                       {(event.type === 'leave_start' || event.type === 'leave_end') && (
                                         <div className="text-sm text-gray-700 mt-2">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-medium">{t('timeline.leaveType')}:</span>
-                                            <span>{event.leave_type || 'N/A'}</span>
+                                          <div className="flex items-center justify-between gap-2 mb-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium">{t('timeline.leaveType')}:</span>
+                                              <span className="font-semibold text-yellow-800">{event.leave_type || 'N/A'}</span>
+                                            </div>
+                                            {event.type === 'leave_start' && event.leave_end && (() => {
+                                              const start = new Date(event.date)
+                                              const end = new Date(event.leave_end)
+                                              const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24))
+                                              return (
+                                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-medium">
+                                                  📅 {days} {days === 1 ? t('leave.day') : t('leave.days')}
+                                                </span>
+                                              )
+                                            })()}
                                           </div>
                                           {event.type === 'leave_start' && event.leave_end && (
-                                            <div className="mt-1 text-xs text-gray-600">
-                                              {t('timeline.until')}: {formatDate(event.leave_end)}
+                                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                                              <div className="flex items-start gap-2">
+                                                <span>📅</span>
+                                                <div>
+                                                  <div className="font-medium text-yellow-900 mb-1">{t('leave.period')}</div>
+                                                  <div className="text-gray-700">
+                                                    {formatDate(event.date)} → {formatDate(event.leave_end)}
+                                                  </div>
+                                                  <div className="mt-1 text-yellow-700 italic">
+                                                    💡 {t('leave.noPenalty')}
+                                                  </div>
+                                                  {event.leave_type && event.leave_type.toLowerCase().includes('vacation') && (
+                                                    <div className="mt-1 text-purple-700 text-xs">
+                                                      ⏱️ {t('leave.ftopPointUsed')}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
                                             </div>
                                           )}
                                           {event.type === 'leave_end' && event.leave_start && (
-                                            <div className="mt-1 text-xs text-gray-600">
-                                              {t('timeline.since')}: {formatDate(event.leave_start)}
+                                            <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
+                                              <span>🔙</span>
+                                              <span>{t('timeline.since')}: {formatDate(event.leave_start)}</span>
                                             </div>
                                           )}
                                         </div>
@@ -560,13 +814,144 @@ function App() {
                                                 <span className="text-xs font-medium mr-1">
                                                   {event.counter.type === 'ftop' ? t('counter.ftop_short') : t('counter.standard_short')}
                                                 </span>
-                                                {event.counter.point_qty > 0 ? '+' : ''}{event.counter.point_qty} 
+                                                {event.counter.point_qty > 0 ? '+' : ''}{event.counter.point_qty}
                                                 <span className="text-gray-600 ml-1">
                                                   → {event.counter.type === 'ftop' ? event.counter.ftop_total : event.counter.standard_total}
                                                 </span>
                                               </div>
                                             )}
                                           </div>
+
+                                          {/* Holiday Relief Explanation */}
+                                          {event.state === 'absent' && event.counter && (() => {
+                                            const holiday = isEventDuringHoliday(event.date, holidays)
+                                            if (holiday) {
+                                              // Calculate penalty breakdown
+                                              // Base penalty is -2, holiday relief adds back 1 or 2
+                                              const netPenalty = event.counter.point_qty
+                                              const basePenalty = -2
+                                              const relief = netPenalty - basePenalty // This will be +1 or +2
+
+                                              return (
+                                                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                                  <div className="text-xs font-semibold text-yellow-800 mb-1">
+                                                    🎉 {t('holiday.duringHoliday')}: {holiday.name}
+                                                  </div>
+                                                  <div className="text-xs text-gray-700">
+                                                    <div className="flex justify-between items-center">
+                                                      <span>{t('holiday.basePenalty')}:</span>
+                                                      <span className="font-mono text-red-600">{basePenalty}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                      <span>{t('holiday.relief')}:</span>
+                                                      <span className="font-mono text-green-600">+{relief}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center font-semibold border-t border-yellow-300 mt-1 pt-1">
+                                                      <span>{t('holiday.netPenalty')}:</span>
+                                                      <span className="font-mono text-orange-700">{netPenalty}</span>
+                                                    </div>
+                                                  </div>
+                                                  <div className="text-xs text-yellow-700 mt-1 italic">
+                                                    {formatDate(holiday.date_begin)} - {formatDate(holiday.date_end)}
+                                                  </div>
+                                                </div>
+                                              )
+                                            }
+                                            return null
+                                          })()}
+
+                                          {/* FTOP Cycle Deduction Explanation */}
+                                          {event.shift_type === 'ftop' && event.state === 'done' && event.counter && event.counter.point_qty === -1 && (
+                                            <div className="mt-2 p-2 bg-gray-50 border border-gray-300 rounded">
+                                              <div className="text-xs text-gray-700">
+                                                <div className="flex items-start gap-2">
+                                                  <span className="text-base">ℹ️</span>
+                                                  <div>
+                                                    <div className="font-medium text-gray-800 mb-1">
+                                                      {t('shift.ftopCycleExplanation')}
+                                                    </div>
+                                                    <div className="text-xs text-gray-600 italic">
+                                                      {t('shift.ftopCycleDetail')}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Exchange Details */}
+                                          {event.exchange_details &&
+                                           event.exchange_details.exchange_state !== 'draft' &&
+                                           (event.exchange_details.replacement_shift?.date ||
+                                            event.exchange_details.original_shift?.date ||
+                                            event.exchange_details.counter_impact) && (
+                                            <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded">
+                                              <div className="text-xs text-gray-700">
+                                                <div className="flex items-start gap-2">
+                                                  <span className="text-base">🔄</span>
+                                                  <div className="flex-1">
+                                                    <div className="font-semibold text-orange-900 mb-2">
+                                                      {t('exchange.details')}
+                                                    </div>
+
+                                                    {/* Original shift that was exchanged away */}
+                                                    {event.exchange_details.replacement_shift && event.exchange_details.replacement_shift.date && (
+                                                      <div className="mb-2 p-2 bg-white rounded border border-orange-100">
+                                                        <div className="font-medium text-orange-800 mb-1">
+                                                          {t('exchange.replacedWith')}
+                                                        </div>
+                                                        <div className="text-gray-700">
+                                                          <div>{event.exchange_details.replacement_shift.shift_name || t('exchange.shift')}</div>
+                                                          <div className="text-xs text-gray-600 mt-1">
+                                                            📅 {formatDate(event.exchange_details.replacement_shift.date)}
+                                                            {event.exchange_details.replacement_shift.week_name && (
+                                                              <span className="ml-2">• Week {event.exchange_details.replacement_shift.week_name}</span>
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+
+                                                    {/* Replacement shift that replaced an original */}
+                                                    {event.exchange_details.original_shift && event.exchange_details.original_shift.date && (
+                                                      <div className="mb-2 p-2 bg-white rounded border border-blue-100">
+                                                        <div className="font-medium text-blue-800 mb-1">
+                                                          {t('exchange.replaces')}
+                                                        </div>
+                                                        <div className="text-gray-700">
+                                                          <div>{event.exchange_details.original_shift.shift_name || t('exchange.shift')}</div>
+                                                          <div className="text-xs text-gray-600 mt-1">
+                                                            📅 {formatDate(event.exchange_details.original_shift.date)}
+                                                            {event.exchange_details.original_shift.week_name && (
+                                                              <span className="ml-2">• Week {event.exchange_details.original_shift.week_name}</span>
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+
+                                                    {/* Counter impact explanation */}
+                                                    {event.exchange_details.counter_impact && (
+                                                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                                                        <div className="flex items-start gap-2">
+                                                          <span className="text-sm">✓</span>
+                                                          <div className="text-xs text-green-800">
+                                                            {event.exchange_details.counter_impact === 'no_penalty_attended_replacement' && (
+                                                              <span>{t('exchange.noPenaltyAttended')}</span>
+                                                            )}
+                                                            {event.exchange_details.counter_impact === 'exchanged_for_replacement' && (
+                                                              <span>{t('exchange.exchangedForReplacement')}</span>
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+
                                           {event.is_late && (
                                             <div className="mt-1 text-xs text-orange-600 font-medium">
                                               ⏰ {t('timeline.shiftLate')}
