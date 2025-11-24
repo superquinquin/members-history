@@ -298,64 +298,10 @@ function App() {
       cycles[cycleKey].allEvents.push(eventWithMeta)
       allEvents.push({ ...eventWithMeta, cycleKey })
     })
-    
-    if (leaves) {
-      leaves.forEach(leave => {
-        const leaveStart = new Date(leave.start_date)
-        const leaveEnd = new Date(leave.stop_date)
-        
-        const startCycleInfo = getCycleAndWeekForDate(leave.start_date)
-        if (startCycleInfo) {
-          const cycleKey = `cycle-${startCycleInfo.cycleNumber}`
-          if (cycles[cycleKey]) {
-            const weekKey = startCycleInfo.weekLetter
-            if (!cycles[cycleKey].weeks[weekKey]) {
-              cycles[cycleKey].weeks[weekKey] = {
-                weekLetter: weekKey,
-                startDate: startCycleInfo.weekStartDate,
-                endDate: startCycleInfo.weekEndDate,
-                events: []
-              }
-            }
-            cycles[cycleKey].weeks[weekKey].events.push({
-              type: 'leave_start',
-              date: leave.start_date,
-              leave_type: leave.leave_type,
-              leave_end: leave.stop_date,
-              leave_id: leave.id,
-              weekLetter: startCycleInfo.weekLetter,
-              duringLeave: false
-            })
-          }
-        }
-        
-        const endCycleInfo = getCycleAndWeekForDate(leave.stop_date)
-        if (endCycleInfo) {
-          const cycleKey = `cycle-${endCycleInfo.cycleNumber}`
-          if (cycles[cycleKey]) {
-            const weekKey = endCycleInfo.weekLetter
-            if (!cycles[cycleKey].weeks[weekKey]) {
-              cycles[cycleKey].weeks[weekKey] = {
-                weekLetter: weekKey,
-                startDate: endCycleInfo.weekStartDate,
-                endDate: endCycleInfo.weekEndDate,
-                events: []
-              }
-            }
-            cycles[cycleKey].weeks[weekKey].events.push({
-              type: 'leave_end',
-              date: leave.stop_date,
-              leave_type: leave.leave_type,
-              leave_start: leave.start_date,
-              leave_id: leave.id,
-              weekLetter: endCycleInfo.weekLetter,
-              duringLeave: false
-            })
-          }
-        }
-      })
-    }
-    
+
+    // Note: Leave start/end events are now created by the backend and included in the events array
+    // The leaves array is still needed for the isEventDuringLeave() helper to show overlays on shifts
+
     return Object.values(cycles).sort((a, b) => b.cycleNumber - a.cycleNumber)
   }
 
@@ -584,28 +530,41 @@ function App() {
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                       {(() => {
                         // Find the most recent counter totals from events
+                        // Search through ALL events to find both counter values
                         let latestFtopTotal = null
                         let latestStandardTotal = null
 
                         // Iterate through events to find the latest counter values
+                        // Events are sorted most recent first, so we capture first occurrence of each counter
                         for (const event of historyEvents) {
                           if (event.type === 'shift' && event.counter) {
-                            if (event.counter.ftop_total !== undefined) {
-                              if (latestFtopTotal === null) latestFtopTotal = event.counter.ftop_total
+                            // Shift events with counter data should have both totals
+                            if (event.counter.ftop_total !== undefined && latestFtopTotal === null) {
+                              latestFtopTotal = event.counter.ftop_total
                             }
-                            if (event.counter.standard_total !== undefined) {
-                              if (latestStandardTotal === null) latestStandardTotal = event.counter.standard_total
+                            if (event.counter.standard_total !== undefined && latestStandardTotal === null) {
+                              latestStandardTotal = event.counter.standard_total
                             }
                           }
                           if (event.type === 'counter') {
-                            if (event.counter_type === 'ftop' && event.ftop_total !== undefined) {
-                              if (latestFtopTotal === null) latestFtopTotal = event.ftop_total
+                            // Manual counter events have both totals regardless of type
+                            if (event.ftop_total !== undefined && latestFtopTotal === null) {
+                              latestFtopTotal = event.ftop_total
                             }
-                            if (event.counter_type === 'standard' && event.standard_total !== undefined) {
-                              if (latestStandardTotal === null) latestStandardTotal = event.standard_total
+                            if (event.standard_total !== undefined && latestStandardTotal === null) {
+                              latestStandardTotal = event.standard_total
                             }
                           }
+
+                          // Stop searching once we have both values
+                          if (latestFtopTotal !== null && latestStandardTotal !== null) {
+                            break
+                          }
                         }
+
+                        // If we still don't have values, default to 0 (member with no counter events yet)
+                        if (latestFtopTotal === null) latestFtopTotal = 0
+                        if (latestStandardTotal === null) latestStandardTotal = 0
 
                         const getCounterStatusColor = (value, isFtop) => {
                           if (value === null || value === undefined) return 'text-gray-600'
@@ -743,8 +702,11 @@ function App() {
 
                                   if (event.type === 'shift' && event.state === 'done') return '🎯'
                                   if (event.type === 'shift' && event.state === 'absent') return '❌'
-                                  if (event.type === 'shift' && event.state === 'excused') return '✓'
-                                  if (event.type === 'shift' && (event.state === 'waiting' || event.state === 'replaced')) return '🔄'
+                                  if (event.type === 'shift' && event.state === 'excused') return '📝'
+                                  // Show exchange icon only for actual exchanges
+                                  if (event.type === 'shift' && (event.state === 'waiting' || event.state === 'replaced') && event.exchange_details) return '🔄'
+                                  // Waiting/replaced without exchange (during leave) - use excused icon
+                                  if (event.type === 'shift' && (event.state === 'waiting' || event.state === 'replaced')) return '📝'
                                   return '📋'
                                 }
                                 
@@ -805,9 +767,13 @@ function App() {
                                     if (event.state === 'excused') {
                                       return t('timeline.shiftExcused')
                                     }
-                                    // Show "Shift Exchanged" for both waiting and replaced states
-                                    if (event.state === 'waiting' || event.state === 'replaced') {
+                                    // Show "Shift Exchanged" ONLY if there's actual exchange data
+                                    if ((event.state === 'waiting' || event.state === 'replaced') && event.exchange_details) {
                                       return t('timeline.shiftExchanged')
+                                    }
+                                    // Waiting/replaced without exchange data (e.g., during leave) - treat as excused
+                                    if (event.state === 'waiting' || event.state === 'replaced') {
+                                      return t('timeline.shiftExcused')
                                     }
                                   }
 
@@ -823,7 +789,7 @@ function App() {
                                     <div className={`bg-white rounded-xl p-4 shadow-md border-2 hover:shadow-lg transition-all ${
                                       (event.type === 'leave_start' || event.type === 'leave_end') ? 'border-yellow-400 bg-yellow-50' :
                                       event.type === 'counter' ? (event.point_qty > 0 ? 'border-green-400' : event.point_qty < 0 ? 'border-red-400' : 'border-gray-400') :
-                                      event.type === 'shift' && (event.is_exchanged || event.is_exchange) ? 'border-orange-300 bg-orange-50' :
+                                      event.type === 'shift' && (event.is_exchanged || event.is_exchange) && event.exchange_details ? 'border-orange-300 bg-orange-50' :
                                       event.duringLeave ? 'border-yellow-300 bg-yellow-50' :
                                       'border-purple-200'
                                     }`}>
@@ -840,12 +806,12 @@ function App() {
                                               {t('timeline.duringLeave')}
                                             </span>
                                           )}
-                                          {event.type === 'shift' && event.is_exchanged && (
+                                          {event.type === 'shift' && event.is_exchanged && event.exchange_details && (
                                             <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
                                               🔄 {t('shift.exchanged')}
                                             </span>
                                           )}
-                                          {event.type === 'shift' && event.is_exchange && (
+                                          {event.type === 'shift' && event.is_exchange && event.exchange_details && (
                                             <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
                                               ↔️ {t('shift.exchange')}
                                             </span>
@@ -985,10 +951,8 @@ function App() {
 
                                           {/* Exchange Details */}
                                           {event.exchange_details &&
-                                           event.exchange_details.exchange_state !== 'draft' &&
-                                           (event.exchange_details.replacement_shift?.date ||
-                                            event.exchange_details.original_shift?.date ||
-                                            event.exchange_details.counter_impact) && (
+                                           event.exchange_details.exchange_state &&
+                                           event.exchange_details.exchange_state !== 'draft' && (
                                             <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded">
                                               <div className="text-xs text-gray-700">
                                                 <div className="flex items-start gap-2">
@@ -1048,6 +1012,16 @@ function App() {
                                                             )}
                                                           </div>
                                                         </div>
+                                                      </div>
+                                                    )}
+
+                                                    {/* Show exchange state if no other details available */}
+                                                    {!event.exchange_details.replacement_shift?.date &&
+                                                     !event.exchange_details.original_shift?.date &&
+                                                     !event.exchange_details.counter_impact &&
+                                                     event.exchange_details.exchange_state && (
+                                                      <div className="text-xs text-gray-600">
+                                                        {t('exchange.state')}: <span className="capitalize">{event.exchange_details.exchange_state}</span>
                                                       </div>
                                                     )}
                                                   </div>

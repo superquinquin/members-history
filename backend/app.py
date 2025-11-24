@@ -562,8 +562,7 @@ def get_member_history(member_id):
                     "shift_name": shift.get("shift_name"),
                     "state": shift.get("state"),
                     "is_late": shift.get("is_late", False),
-                    "is_exchanged": shift.get("is_exchanged", False),
-                    "is_exchange": shift.get("is_exchange", False),
+                    # Don't set is_exchanged/is_exchange yet - will set later if exchange_details exists
                     "week_number": shift.get("week_number"),
                     "week_name": shift.get("week_name"),
                     "shift_type": shift_type,
@@ -576,9 +575,9 @@ def get_member_history(member_id):
                 # Add exchange details if this shift is part of an exchange
                 exchange_details = {}
 
-                # exchange_replaced_reg_id = The registration that REPLACED this shift
-                # (i.e., this is the original shift that was exchanged away)
-                replacement_reg_id = extract_id(shift.get("exchange_replaced_reg_id"))
+                # exchange_replacing_reg_id = The registration that REPLACED this shift
+                # (i.e., the new shift that the member chose to replace this one)
+                replacement_reg_id = extract_id(shift.get("exchange_replacing_reg_id"))
                 if not replacement_reg_id:
                     # Fall back to legacy field
                     replacement_reg_id = extract_id(shift.get("replaced_reg_id"))
@@ -592,9 +591,9 @@ def get_member_history(member_id):
                         "week_name": replacement_reg.get("week_name"),
                     }
 
-                # exchange_replacing_reg_id = The registration that THIS shift is replacing
-                # (i.e., this is a replacement shift)
-                original_reg_id = extract_id(shift.get("exchange_replacing_reg_id"))
+                # exchange_replaced_reg_id = The original registration that THIS shift is replacing
+                # (i.e., this is a replacement shift covering the original)
+                original_reg_id = extract_id(shift.get("exchange_replaced_reg_id"))
                 if original_reg_id and original_reg_id in exchange_registrations:
                     original_reg = exchange_registrations[original_reg_id]
                     exchange_details["original_shift"] = {
@@ -604,11 +603,6 @@ def get_member_history(member_id):
                         "week_name": original_reg.get("week_name"),
                     }
 
-                # Add exchange state if available
-                exchange_state = shift.get("exchange_state")
-                if exchange_state:
-                    exchange_details["exchange_state"] = exchange_state
-
                 # Add counter impact explanation
                 if shift.get("is_exchange") and shift.get("state") == "done":
                     exchange_details["counter_impact"] = "no_penalty_attended_replacement"
@@ -617,8 +611,38 @@ def get_member_history(member_id):
                     # Check if replacement was attended (would need to check the registration state)
                     exchange_details["counter_impact"] = "exchanged_for_replacement"
 
+                # Add exchange state ONLY if we have actual exchange relationship data or counter impact
+                # This prevents showing exchange details for "waiting" shifts that are just during leave
+                if "replacement_shift" in exchange_details or "original_shift" in exchange_details or "counter_impact" in exchange_details:
+                    exchange_state = shift.get("exchange_state")
+                    if exchange_state:
+                        exchange_details["exchange_state"] = exchange_state
+                    # Fallback: infer exchange state from flags if not explicitly set
+                    elif shift.get("is_exchanged"):
+                        exchange_details["exchange_state"] = "replaced"
+                    elif shift.get("is_exchange"):
+                        exchange_details["exchange_state"] = "replacing"
+
+                # Only add exchange_details if we have meaningful exchange information
+                # Don't show exchange details for "waiting" shifts that are just during leave
                 if exchange_details:
                     shift_event["exchange_details"] = exchange_details
+                    # Only set these flags when we have actual exchange data
+                    shift_event["is_exchanged"] = bool(shift.get("is_exchanged"))
+                    shift_event["is_exchange"] = bool(shift.get("is_exchange"))
+                else:
+                    # No exchange details, so definitely not an exchange
+                    shift_event["is_exchanged"] = False
+                    shift_event["is_exchange"] = False
+
+                # Debug logging for waiting/replaced shifts
+                if shift.get("state") in ["waiting", "replaced"]:
+                    logger.info(f"Shift {shift.get('id')} ({shift.get('shift_name')}) state={shift.get('state')}: "
+                               f"is_exchanged={shift.get('is_exchanged')}, "
+                               f"exchange_state={shift.get('exchange_state')}, "
+                               f"has_exchange_details={bool(exchange_details)}, "
+                               f"exchange_details_keys={list(exchange_details.keys()) if exchange_details else []}, "
+                               f"sent_is_exchanged={shift_event.get('is_exchanged')}")
 
                 events.append(shift_event)
 

@@ -546,8 +546,8 @@ class TestMemberHistoryAPI:
                 "is_exchanged": True,  # This shift was exchanged away
                 "is_exchange": False,
                 "exchange_state": "replaced",
-                "exchange_replacing_reg_id": False,  # No original shift (this IS the original)
-                "exchange_replaced_reg_id": [902, "Replacement Registration"],  # Points to replacement
+                "exchange_replacing_reg_id": [902, "Replacement Registration"],  # Shift 902 is replacing this one
+                "exchange_replaced_reg_id": False,  # This shift didn't replace anyone (it's the original)
                 "week_number": 2,
                 "week_name": "B",
                 "shift_type_id": [2, "Standard"],
@@ -562,8 +562,8 @@ class TestMemberHistoryAPI:
                 "is_exchanged": False,
                 "is_exchange": True,  # This is a replacement shift
                 "exchange_state": "replacing",
-                "exchange_replacing_reg_id": [901, "Original Registration"],  # Points to original
-                "exchange_replaced_reg_id": False,  # No replacement (this IS the replacement)
+                "exchange_replacing_reg_id": False,  # No one is replacing this shift
+                "exchange_replaced_reg_id": [901, "Original Registration"],  # This shift replaced shift 901
                 "week_number": 3,
                 "week_name": "C",
                 "shift_type_id": [2, "Standard"],
@@ -669,21 +669,21 @@ class TestMemberHistoryAPI:
         """
         Test shift exchange with only exchange_state (no relationship IDs).
 
-        Some shifts may have exchange_state but no relationship fields populated.
-        This tests that we handle this gracefully.
+        Shifts with exchange_state but no relationship data should NOT get exchange_details.
+        This prevents "waiting" shifts during leave from showing as exchanged.
         """
         mock_shifts = [
             {
                 "id": 903,
                 "date_begin": "2025-03-10 14:00:00",
-                "state": "open",
+                "state": "waiting",  # Waiting state (could be leave or exchange)
                 "shift_id": [203, "DSat 14:00"],
                 "shift_name": "DSat 14:00",
                 "is_late": False,
-                "is_exchanged": False,
+                "is_exchanged": True,  # Flag is set
                 "is_exchange": False,
-                "exchange_state": "draft",  # Has state but no relationships
-                "exchange_replacing_reg_id": False,
+                "exchange_state": "replaced",  # State is set
+                "exchange_replacing_reg_id": False,  # But no relationship data
                 "exchange_replaced_reg_id": False,
                 "week_number": 4,
                 "week_name": "D",
@@ -709,8 +709,5 @@ class TestMemberHistoryAPI:
         assert len(shift_events) == 1
 
         shift = shift_events[0]
-        assert "exchange_details" in shift
-        assert shift["exchange_details"]["exchange_state"] == "draft"
-        # Should not have relationship fields
-        assert "replacement_shift" not in shift["exchange_details"]
-        assert "original_shift" not in shift["exchange_details"]
+        # Should NOT have exchange_details when there's no relationship data
+        assert "exchange_details" not in shift
