@@ -156,7 +156,7 @@ class OdooClient:
         return {}
 
     def get_member_purchase_history(
-        self, partner_id: int, limit: int = 50
+        self, partner_id: int, limit: Optional[int] = None, start_date: Optional[str] = None
     ) -> List[Dict]:
         if not self.uid:
             if not self.authenticate():
@@ -166,7 +166,16 @@ class OdooClient:
             raise Exception("Models proxy not initialized")
 
         domain = [("partner_id", "=", partner_id), ("state", "=", "done")]
+
+        # Add date filter if start_date is provided
+        if start_date:
+            domain.append(("date_order", ">=", start_date))
+
         fields = ["id", "date_order", "name", "pos_reference"]
+
+        query_options = {"fields": fields, "order": "date_order desc"}
+        if limit:
+            query_options["limit"] = limit
 
         results = self.models.execute_kw(
             self.db,
@@ -175,13 +184,15 @@ class OdooClient:
             "pos.order",
             "search_read",
             [domain],
-            {"fields": fields, "limit": limit, "order": "date_order desc"},
+            query_options,
         )
 
         logger.info(f"Purchase history for partner {partner_id}: {len(results)} orders")
         return results
 
-    def get_member_shift_history(self, partner_id: int, limit: int = 50) -> List[Dict]:
+    def get_member_shift_history(
+        self, partner_id: int, limit: Optional[int] = None, start_date: Optional[str] = None
+    ) -> List[Dict]:
         if not self.uid:
             if not self.authenticate():
                 raise Exception("Failed to authenticate with Odoo")
@@ -193,6 +204,11 @@ class OdooClient:
             ("partner_id", "=", partner_id),
             ("state", "in", ["done", "absent", "excused", "open", "waiting", "replaced"]),
         ]
+
+        # Add date filter if start_date is provided
+        if start_date:
+            domain.append(("date_begin", ">=", start_date))
+
         fields = [
             "id",
             "date_begin",
@@ -208,6 +224,10 @@ class OdooClient:
             "replaced_reg_id",  # Legacy field - might still contain data
         ]
 
+        query_options = {"fields": fields, "order": "date_begin desc"}
+        if limit:
+            query_options["limit"] = limit
+
         results = self.models.execute_kw(
             self.db,
             self.uid,
@@ -215,7 +235,7 @@ class OdooClient:
             "shift.registration",
             "search_read",
             [domain],
-            {"fields": fields, "limit": limit, "order": "date_begin desc"},
+            query_options,
         )
 
         shift_ids = [
@@ -263,7 +283,7 @@ class OdooClient:
         logger.info(f"Shift history for partner {partner_id}: {len(results)} registrations")
         return results
 
-    def get_member_leaves(self, partner_id: int) -> List[Dict]:
+    def get_member_leaves(self, partner_id: int, start_date: Optional[str] = None) -> List[Dict]:
         if not self.uid:
             if not self.authenticate():
                 raise Exception("Failed to authenticate with Odoo")
@@ -272,6 +292,12 @@ class OdooClient:
             raise Exception("Models proxy not initialized")
 
         domain = [("partner_id", "=", partner_id), ("state", "=", "done")]
+
+        # Add date filter if start_date is provided
+        # Include leaves that were active during or after the start_date
+        if start_date:
+            domain.append(("stop_date", ">=", start_date))
+
         fields = ["id", "start_date", "stop_date", "type_id", "state"]
 
         results = self.models.execute_kw(

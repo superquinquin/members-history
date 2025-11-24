@@ -5,7 +5,13 @@ import os
 import logging
 from typing import Dict, Optional, Any, Tuple
 from odoo_client import OdooClient
-from utils import extract_id, extract_name, is_valid_many2one, validate_positive_int
+from utils import (
+    extract_id,
+    extract_name,
+    is_valid_many2one,
+    validate_positive_int,
+    get_last_n_cycles_date_range,
+)
 
 load_dotenv()
 
@@ -191,13 +197,19 @@ def get_member_history(member_id):
         return jsonify({"error": str(e)}), 400
 
     try:
-        purchases = odoo.get_member_purchase_history(member_id)
-        shifts = odoo.get_member_shift_history(member_id)
-        leaves = odoo.get_member_leaves(member_id)
+        # Calculate date range for last 13 cycles (approximately 12 months)
+        start_date, end_date = get_last_n_cycles_date_range(n=13)
+        logger.info(f"Fetching member {member_id} history from {start_date} to {end_date}")
+
+        # Fetch member data with date filtering
+        purchases = odoo.get_member_purchase_history(member_id, start_date=start_date)
+        shifts = odoo.get_member_shift_history(member_id, start_date=start_date)
+        leaves = odoo.get_member_leaves(member_id, start_date=start_date)
         counter_events = []
         holidays = []
 
         try:
+            # Fetch ALL counter events (no date filter) for accurate running totals
             counter_events = odoo.get_member_counter_events(member_id)
         except Exception as counter_error:
             logger.warning(
@@ -206,8 +218,8 @@ def get_member_history(member_id):
             )
 
         try:
-            # Fetch holidays for context (helps explain penalty variations)
-            holidays = odoo.get_holidays()
+            # Fetch holidays for the date range
+            holidays = odoo.get_holidays(start_date=start_date, end_date=end_date)
         except Exception as holiday_error:
             logger.warning(f"Error fetching holidays (continuing without): {holiday_error}", exc_info=True)
 
@@ -502,9 +514,9 @@ def get_member_history(member_id):
                 # Add exchange details if this shift is part of an exchange
                 exchange_details = {}
 
-                # exchange_replacing_reg_id = The registration that is REPLACING this shift
+                # exchange_replaced_reg_id = The registration that REPLACED this shift
                 # (i.e., this is the original shift that was exchanged away)
-                replacement_reg_id = extract_id(shift.get("exchange_replacing_reg_id"))
+                replacement_reg_id = extract_id(shift.get("exchange_replaced_reg_id"))
                 if not replacement_reg_id:
                     # Fall back to legacy field
                     replacement_reg_id = extract_id(shift.get("replaced_reg_id"))
@@ -518,9 +530,9 @@ def get_member_history(member_id):
                         "week_name": replacement_reg.get("week_name"),
                     }
 
-                # exchange_replaced_reg_id = The registration that THIS shift is replacing
+                # exchange_replacing_reg_id = The registration that THIS shift is replacing
                 # (i.e., this is a replacement shift)
-                original_reg_id = extract_id(shift.get("exchange_replaced_reg_id"))
+                original_reg_id = extract_id(shift.get("exchange_replacing_reg_id"))
                 if original_reg_id and original_reg_id in exchange_registrations:
                     original_reg = exchange_registrations[original_reg_id]
                     exchange_details["original_shift"] = {
@@ -538,8 +550,8 @@ def get_member_history(member_id):
                 # Add counter impact explanation
                 if shift.get("is_exchange") and shift.get("state") == "done":
                     exchange_details["counter_impact"] = "no_penalty_attended_replacement"
-                elif shift.get("is_exchanged") and replacing_reg_id and replacing_reg_id in exchange_registrations:
-                    replacement_reg = exchange_registrations[replacing_reg_id]
+                elif shift.get("is_exchanged") and replacement_reg_id and replacement_reg_id in exchange_registrations:
+                    replacement_reg = exchange_registrations[replacement_reg_id]
                     # Check if replacement was attended (would need to check the registration state)
                     exchange_details["counter_impact"] = "exchanged_for_replacement"
 
@@ -554,19 +566,22 @@ def get_member_history(member_id):
 
                 is_manual = counter_event.get("is_manual", False)
                 if is_manual or not shift_id:
-                    events.append(
-                        {
-                            "type": "counter",
-                            "id": counter_event.get("id"),
-                            "date": counter_event.get("create_date"),
-                            "point_qty": counter_event.get("point_qty", 0),
-                            "sum_current_qty": counter_event.get("sum_current_qty", 0),
-                            "ftop_total": counter_event.get("ftop_total", 0),
-                            "standard_total": counter_event.get("standard_total", 0),
-                            "name": counter_event.get("name", ""),
-                            "counter_type": counter_event.get("type", ""),
-                        }
-                    )
+                    # Filter counter events for display - only include events within date range
+                    event_date = counter_event.get("create_date", "")
+                    if event_date and event_date >= start_date:
+                        events.append(
+                            {
+                                "type": "counter",
+                                "id": counter_event.get("id"),
+                                "date": event_date,
+                                "point_qty": counter_event.get("point_qty", 0),
+                                "sum_current_qty": counter_event.get("sum_current_qty", 0),
+                                "ftop_total": counter_event.get("ftop_total", 0),
+                                "standard_total": counter_event.get("standard_total", 0),
+                                "name": counter_event.get("name", ""),
+                                "counter_type": counter_event.get("type", ""),
+                            }
+                        )
 
         # Generate leave timeline events (start and end markers)
         # Per spec Section 5.4: two events per leave
