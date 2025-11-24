@@ -21,7 +21,8 @@
     "title": "History for {{name}}",
     "memberId": "Member ID:",
     "comingSoon": "History feature coming soon",
-    "comingSoonDetails": "We're working on bringing you detailed member history"
+    "comingSoonDetails": "We're working on bringing you detailed member history",
+    "shiftsInLast13Cycles": "shifts in last 13 cycles"
   },
   "timeline": {
     "purchase": "Purchase in Store",

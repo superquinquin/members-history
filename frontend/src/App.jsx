@@ -487,6 +487,43 @@ function App() {
                   {/* Member Status Badges */}
                   {memberStatus && (
                     <div className="flex flex-wrap gap-2 mt-4">
+                      {(() => {
+                        // Calculate attended standard shifts in last 13 cycles (excluding current)
+                        const getAttendedStandardShiftsCount = () => {
+                          if (!memberStatus || memberStatus.shift_type !== 'standard' || !cycleConfig) return null
+
+                          const today = new Date().toISOString().split('T')[0]
+                          const currentCycleInfo = getCycleAndWeekForDate(today)
+
+                          if (!currentCycleInfo) return null
+
+                          const currentCycleNumber = currentCycleInfo.cycleNumber
+                          const startCycleNumber = currentCycleNumber - 13
+
+                          const count = historyEvents.filter(event => {
+                            // Only count shift events with standard type
+                            if (event.type !== 'shift' || event.shift_type !== 'standard') return false
+
+                            // Check if attended (done, late but attended, or excused)
+                            const isAttended = event.state === 'done' || event.is_late === true || event.state === 'excused'
+                            if (!isAttended) return false
+
+                            // Get event's cycle
+                            const eventCycleInfo = getCycleAndWeekForDate(event.date)
+                            if (!eventCycleInfo) return false
+
+                            // Include if in last 13 cycles but not current cycle
+                            return eventCycleInfo.cycleNumber < currentCycleNumber &&
+                                   eventCycleInfo.cycleNumber >= startCycleNumber
+                          }).length
+
+                          return count
+                        }
+
+                        const attendedShiftsCount = getAttendedStandardShiftsCount()
+
+                        return (
+                          <>
                       {/* Cooperative State Badge */}
                       {memberStatus.cooperative_state && (
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
@@ -529,6 +566,16 @@ function App() {
                           {memberStatus.customer ? t('status.canShop') : t('status.cannotShop')}
                         </span>
                       )}
+
+                      {/* Standard Shifts Count Badge */}
+                      {attendedShiftsCount !== null && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-100 text-indigo-800 border border-indigo-300">
+                          📅 {attendedShiftsCount} {t('history.shiftsInLast13Cycles')}
+                        </span>
+                      )}
+                          </>
+                        )
+                      })()}
                     </div>
                   )}
 

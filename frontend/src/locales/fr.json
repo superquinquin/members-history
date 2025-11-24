@@ -21,7 +21,8 @@
     "title": "Historique pour {{name}}",
     "memberId": "ID du Membre :",
     "comingSoon": "Fonctionnalité d'historique à venir",
-    "comingSoonDetails": "Nous travaillons pour vous apporter l'historique détaillé des membres"
+    "comingSoonDetails": "Nous travaillons pour vous apporter l'historique détaillé des membres",
+    "shiftsInLast13Cycles": "services effectués dans les 13 derniers cycles"
   },
   "timeline": {
     "purchase": "Achat en Magasin",
