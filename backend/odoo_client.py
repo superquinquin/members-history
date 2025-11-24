@@ -459,3 +459,64 @@ class OdooClient:
         results = self.search_read("res.partner", domain, fields)
         logger.info(f"Found {len(results)} worker members with addresses")
         return results
+
+    def get_shift_config(self) -> Dict[str, any]:
+        """
+        Get shift cycle configuration from Odoo.
+
+        Fetches shift_weeks_per_cycle and shift_week_a_date from res.config.settings.
+        These values define the cycle calculation parameters.
+
+        Returns:
+            Dictionary with:
+            - weeks_per_cycle (int): Number of weeks per cycle (typically 4)
+            - week_a_date (str): Start date of initial Week A (YYYY-MM-DD)
+
+        Raises:
+            Exception: If authentication fails or models proxy not initialized
+        """
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+
+        # res.config.settings is typically a singleton
+        # Get the most recent configuration record
+        domain = []
+        fields = ["shift_weeks_per_cycle", "shift_week_a_date"]
+
+        try:
+            results = self.models.execute_kw(
+                self.db,
+                self.uid,
+                self.password,
+                "res.config.settings",
+                "search_read",
+                [domain],
+                {"fields": fields, "limit": 1, "order": "id desc"},
+            )
+
+            if results and len(results) > 0:
+                config = results[0]
+                logger.info(
+                    f"Fetched shift config from Odoo: "
+                    f"weeks_per_cycle={config.get('shift_weeks_per_cycle')}, "
+                    f"week_a_date={config.get('shift_week_a_date')}"
+                )
+                return {
+                    "weeks_per_cycle": config.get("shift_weeks_per_cycle"),
+                    "week_a_date": config.get("shift_week_a_date"),
+                }
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch shift config from Odoo: {e}. Using defaults."
+            )
+
+        # Fallback to hardcoded defaults if config not found or error
+        logger.warning("Using default shift configuration (4 weeks, starting 2025-01-13)")
+        return {
+            "weeks_per_cycle": 4,
+            "week_a_date": "2025-01-13",
+        }

@@ -63,6 +63,48 @@ def test_odoo_connection():
         ), 500
 
 
+@app.route("/api/config/cycles", methods=["GET"])
+def get_cycle_config():
+    """
+    Get shift cycle configuration from Odoo.
+
+    Returns the shift_weeks_per_cycle and shift_week_a_date configuration
+    that the frontend can use to calculate cycles dynamically.
+
+    NOTE: The week_a_date is adjusted to be one cycle earlier than the Odoo config
+    to shift cycle numbering (current Cycle 12 becomes Cycle 13).
+
+    Returns:
+        JSON object with:
+        - weeks_per_cycle (int): Number of weeks per cycle
+        - week_a_date (str): Start date of initial Week A (YYYY-MM-DD) - adjusted
+    """
+    try:
+        config = odoo.get_shift_config()
+
+        # Adjust week_a_date to be one cycle earlier
+        from datetime import datetime, timedelta
+        weeks_per_cycle = config["weeks_per_cycle"]
+        original_week_a = datetime.strptime(config["week_a_date"], "%Y-%m-%d")
+        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime("%Y-%m-%d")
+
+        adjusted_config = {
+            "weeks_per_cycle": weeks_per_cycle,
+            "week_a_date": adjusted_week_a
+        }
+
+        return jsonify(adjusted_config)
+    except Exception as e:
+        logger.error(f"Error fetching shift config: {e}", exc_info=True)
+        # Return default configuration as fallback (also adjusted)
+        return jsonify({
+            "weeks_per_cycle": 4,
+            "week_a_date": "2024-12-16",  # One cycle before 2025-01-13
+            "error": "Using default configuration due to error",
+            "error_details": str(e)
+        }), 200  # Still return 200 with defaults
+
+
 @app.route("/api/members/search", methods=["GET"])
 def search_members():
     name = request.args.get("name", "")
@@ -197,9 +239,29 @@ def get_member_history(member_id):
         return jsonify({"error": str(e)}), 400
 
     try:
-        # Calculate date range for last 13 cycles (approximately 12 months)
-        start_date, end_date = get_last_n_cycles_date_range(n=13)
-        logger.info(f"Fetching member {member_id} history from {start_date} to {end_date}")
+        # Fetch shift configuration from Odoo
+        shift_config = odoo.get_shift_config()
+
+        # Adjust week_a_date to be one cycle earlier so Cycle 1 starts earlier
+        # This shifts all cycle numbering by +1 (current Cycle 12 becomes Cycle 13)
+        from datetime import datetime, timedelta
+        weeks_per_cycle = shift_config["weeks_per_cycle"]
+        original_week_a = datetime.strptime(shift_config["week_a_date"], "%Y-%m-%d")
+        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime("%Y-%m-%d")
+
+        # Create adjusted config with earlier week_a_date
+        adjusted_config = {
+            "weeks_per_cycle": shift_config["weeks_per_cycle"],
+            "week_a_date": adjusted_week_a
+        }
+
+        # Calculate date range for last 13 cycles using adjusted config
+        start_date, end_date = get_last_n_cycles_date_range(n=13, shift_config=adjusted_config)
+
+        logger.info(f"Fetching member {member_id} history from {start_date} to {end_date} (Cycle 1 starts {adjusted_week_a})")
+
+        # Store adjusted config for use in event processing
+        shift_config = adjusted_config
 
         # Fetch member data with date filtering
         purchases = odoo.get_member_purchase_history(member_id, start_date=start_date)

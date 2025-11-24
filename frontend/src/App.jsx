@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import cyclesData from '../../data/cycles_2025.json'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -15,8 +14,38 @@ function App() {
   const [leaves, setLeaves] = useState([])
   const [memberStatus, setMemberStatus] = useState(null)
   const [holidays, setHolidays] = useState([])
+  const [cycleConfig, setCycleConfig] = useState(null)
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+
+  // Fetch cycle configuration on component mount
+  useEffect(() => {
+    const fetchCycleConfig = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/config/cycles`)
+        if (response.ok) {
+          const config = await response.json()
+          setCycleConfig(config)
+        } else {
+          // Use default config if fetch fails
+          console.warn('Failed to fetch cycle config, using defaults')
+          setCycleConfig({
+            weeks_per_cycle: 4,
+            week_a_date: '2025-01-13'
+          })
+        }
+      } catch (err) {
+        console.warn('Error fetching cycle config:', err)
+        // Use default config
+        setCycleConfig({
+          weeks_per_cycle: 4,
+          week_a_date: '2025-01-13'
+        })
+      }
+    }
+
+    fetchCycleConfig()
+  }, [apiUrl])
 
   const toggleLanguage = () => {
     const newLang = i18n.language === 'en' ? 'fr' : 'en'
@@ -132,27 +161,55 @@ function App() {
   }
 
   const getCycleAndWeekForDate = (dateString) => {
-    if (!dateString) return null
-    
+    if (!dateString || !cycleConfig) return null
+
     const eventDate = new Date(dateString)
-    const dateStr = eventDate.toISOString().split('T')[0]
-    
-    for (const cycle of cyclesData.cycles) {
-      for (const week of cycle.weeks) {
-        if (dateStr >= week.start_date && dateStr <= week.end_date) {
-          return {
-            cycleNumber: cycle.cycle_number,
-            cycleStartDate: cycle.start_date,
-            cycleEndDate: cycle.end_date,
-            weekLetter: week.week_letter,
-            weekStartDate: week.start_date,
-            weekEndDate: week.end_date
-          }
-        }
-      }
+    const weekAStart = new Date(cycleConfig.week_a_date)
+    const weeksPerCycle = cycleConfig.weeks_per_cycle
+
+    // Calculate days since Week A start
+    const daysDiff = Math.floor((eventDate - weekAStart) / (1000 * 60 * 60 * 24))
+
+    if (daysDiff < 0) {
+      // Date is before Week A start
+      return null
     }
-    
-    return null
+
+    // Calculate total weeks since Week A
+    const totalWeeks = Math.floor(daysDiff / 7)
+
+    // Calculate cycle number (1-indexed)
+    const cycleNumber = Math.floor(totalWeeks / weeksPerCycle) + 1
+
+    // Calculate week within cycle (0-indexed)
+    const weekInCycle = totalWeeks % weeksPerCycle
+
+    // Map to week letter
+    const weekLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
+    const weekLetter = weekLetters[weekInCycle]
+
+    // Calculate week boundaries
+    const weekOffsetDays = totalWeeks * 7
+    const weekStart = new Date(weekAStart)
+    weekStart.setDate(weekStart.getDate() + weekOffsetDays)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+
+    // Calculate cycle boundaries
+    const cycleWeekOffset = (cycleNumber - 1) * weeksPerCycle * 7
+    const cycleStart = new Date(weekAStart)
+    cycleStart.setDate(cycleStart.getDate() + cycleWeekOffset)
+    const cycleEnd = new Date(cycleStart)
+    cycleEnd.setDate(cycleEnd.getDate() + (weeksPerCycle * 7) - 1)
+
+    return {
+      cycleNumber,
+      cycleStartDate: cycleStart.toISOString().split('T')[0],
+      cycleEndDate: cycleEnd.toISOString().split('T')[0],
+      weekLetter,
+      weekStartDate: weekStart.toISOString().split('T')[0],
+      weekEndDate: weekEnd.toISOString().split('T')[0]
+    }
   }
 
   const isEventDuringLeave = (eventDate, leaves) => {

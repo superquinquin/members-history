@@ -27,7 +27,21 @@ def mock_odoo_client(mocker):
     mock.authenticate.return_value = True
     # Default empty holidays for tests that don't explicitly mock it
     mock.get_holidays.return_value = []
+    # Default shift config
+    mock.get_shift_config.return_value = {
+        "weeks_per_cycle": 4,
+        "week_a_date": "2025-01-13"
+    }
     return mock
+
+
+@pytest.fixture
+def mock_shift_config():
+    """Mock shift configuration from Odoo."""
+    return {
+        "weeks_per_cycle": 4,
+        "week_a_date": "2025-01-13"
+    }
 
 
 @pytest.fixture

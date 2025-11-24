@@ -8,7 +8,7 @@ Odoo Many2one fields and validating inputs.
 import json
 import os
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Dict
 
 
 def extract_id(many2one_field: Any) -> Optional[int]:
@@ -143,7 +143,10 @@ def safe_get(dictionary: dict, key: str, default: Any = None) -> Any:
 
 def load_cycle_data(year: int = 2025) -> Optional[dict]:
     """
-    Load cycle data from the cycles JSON file.
+    DEPRECATED: Load cycle data from the cycles JSON file.
+
+    This function is deprecated. Use get_shift_config_dict() and cycle_calculator
+    module instead for dynamic cycle calculation.
 
     Args:
         year: Year to load cycle data for (default: 2025)
@@ -156,6 +159,13 @@ def load_cycle_data(year: int = 2025) -> Optional[dict]:
         >>> data['year']
         2025
     """
+    import warnings
+    warnings.warn(
+        "load_cycle_data() is deprecated. Use get_shift_config_dict() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+
     # Get the path to the data directory (relative to backend directory)
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(backend_dir)
@@ -168,13 +178,46 @@ def load_cycle_data(year: int = 2025) -> Optional[dict]:
         return None
 
 
-def get_last_n_cycles_date_range(n: int = 13, today: Optional[str] = None) -> tuple[str, str]:
+def get_shift_config_dict() -> Dict[str, any]:
+    """
+    Get shift configuration dictionary.
+
+    This is a simple wrapper that returns the default shift configuration.
+    In production, this is fetched from Odoo via odoo_client.get_shift_config().
+
+    Returns:
+        Dictionary with weeks_per_cycle and week_a_date
+
+    Examples:
+        >>> config = get_shift_config_dict()
+        >>> config['weeks_per_cycle']
+        4
+    """
+    # Default configuration
+    # In app.py, this is overridden by calling odoo.get_shift_config()
+    return {
+        "weeks_per_cycle": 4,
+        "week_a_date": "2025-01-13"
+    }
+
+
+def get_last_n_cycles_date_range(
+    n: int = 13,
+    today: Optional[str] = None,
+    shift_config: Optional[Dict[str, any]] = None
+) -> tuple[str, str]:
     """
     Calculate the date range for the last N complete cycles.
+
+    Uses dynamic cycle calculation based on shift configuration rather than
+    loading from JSON files. This allows the function to work indefinitely
+    without needing year-specific cycle files.
 
     Args:
         n: Number of cycles to look back (default: 13, approximately 12 months)
         today: Today's date in ISO format (YYYY-MM-DD), defaults to actual today
+        shift_config: Optional dict with 'weeks_per_cycle' and 'week_a_date'.
+                     If not provided, uses default configuration.
 
     Returns:
         Tuple of (start_date, end_date) in ISO format (YYYY-MM-DD)
@@ -182,69 +225,18 @@ def get_last_n_cycles_date_range(n: int = 13, today: Optional[str] = None) -> tu
     Examples:
         >>> # If today is 2025-11-24 (Cycle 12, Week B)
         >>> get_last_n_cycles_date_range(13)
-        ('2025-01-13', '2025-11-23')  # From Cycle 1 start to end of Cycle 12 Week A
+        ('2025-01-13', '2025-11-24')
     """
-    if today is None:
-        today = datetime.now().strftime("%Y-%m-%d")
+    from cycle_calculator import get_cycle_date_range
 
-    today_date = datetime.strptime(today, "%Y-%m-%d")
-    current_year = today_date.year
+    # Get shift configuration
+    if shift_config is None:
+        shift_config = get_shift_config_dict()
 
-    # Load cycle data for current year
-    cycle_data = load_cycle_data(current_year)
-    if not cycle_data:
-        # Fallback: if no cycle data, use simple 12-month calculation
-        # This is approximately 365 days back
-        fallback_start = datetime(today_date.year - 1, today_date.month, today_date.day)
-        return (fallback_start.strftime("%Y-%m-%d"), today)
-
-    cycles = cycle_data.get("cycles", [])
-    if not cycles:
-        # Fallback if cycles list is empty
-        fallback_start = datetime(today_date.year - 1, today_date.month, today_date.day)
-        return (fallback_start.strftime("%Y-%m-%d"), today)
-
-    # Find the current cycle (the cycle that contains today)
-    current_cycle_index = None
-    for i, cycle in enumerate(cycles):
-        cycle_start = datetime.strptime(cycle["start_date"], "%Y-%m-%d")
-        cycle_end = datetime.strptime(cycle["end_date"], "%Y-%m-%d")
-
-        if cycle_start <= today_date <= cycle_end:
-            current_cycle_index = i
-            break
-
-    # If we're not in any defined cycle (e.g., between years), use the last cycle
-    if current_cycle_index is None:
-        # Check if we're past all cycles
-        last_cycle_end = datetime.strptime(cycles[-1]["end_date"], "%Y-%m-%d")
-        if today_date > last_cycle_end:
-            # We're past the last cycle of the year, try next year's data
-            next_year_data = load_cycle_data(current_year + 1)
-            if next_year_data and next_year_data.get("cycles"):
-                # Use the first cycle of next year
-                next_cycles = next_year_data["cycles"]
-                # Find current cycle in next year
-                for i, cycle in enumerate(next_cycles):
-                    cycle_start = datetime.strptime(cycle["start_date"], "%Y-%m-%d")
-                    cycle_end = datetime.strptime(cycle["end_date"], "%Y-%m-%d")
-                    if cycle_start <= today_date <= cycle_end:
-                        current_cycle_index = i
-                        # Extend cycles list with next year
-                        cycles = cycles + next_cycles
-                        break
-
-        # If still not found, use last cycle as current
-        if current_cycle_index is None:
-            current_cycle_index = len(cycles) - 1
-
-    # Calculate the start cycle index (n cycles back)
-    start_cycle_index = max(0, current_cycle_index - n + 1)
-
-    # Get start date from the start cycle
-    start_date = cycles[start_cycle_index]["start_date"]
-
-    # End date is today (we want all data up to now, not just complete cycles)
-    end_date = today
-
-    return (start_date, end_date)
+    # Use the cycle calculator to get the date range
+    return get_cycle_date_range(
+        n_cycles=n,
+        week_a_start=shift_config["week_a_date"],
+        weeks_per_cycle=shift_config["weeks_per_cycle"],
+        end_date=today
+    )
