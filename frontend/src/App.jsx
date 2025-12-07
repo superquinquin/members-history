@@ -14,6 +14,7 @@ function App() {
   const [leaves, setLeaves] = useState([])
   const [memberStatus, setMemberStatus] = useState(null)
   const [holidays, setHolidays] = useState([])
+  const [counterTotals, setCounterTotals] = useState(null)
   const [cycleConfig, setCycleConfig] = useState(null)
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
@@ -83,6 +84,7 @@ function App() {
     setLeaves([])
     setMemberStatus(null)
     setHolidays([])
+    setCounterTotals(null)
     setHistoryError(null)
     setHistoryLoading(true)
 
@@ -99,6 +101,7 @@ function App() {
       setHistoryEvents(historyData.events || [])
       setLeaves(historyData.leaves || [])
       setHolidays(historyData.holidays || [])
+      setCounterTotals(historyData.counter_totals || null)
 
       // Fetch member status (optional - don't fail if this errors)
       try {
@@ -401,17 +404,12 @@ function App() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-bold text-gray-900 text-lg mb-2">
+                          <div className="font-bold text-gray-900 text-lg mb-1">
                             {member.name}
                           </div>
-                          {member.address && (
-                            <div className="text-sm text-gray-600 mb-1 flex items-center gap-2">
-                              📍 {member.address}
-                            </div>
-                          )}
-                          {member.phone && (
-                            <div className="text-sm text-gray-600 flex items-center gap-2">
-                              📞 {member.phone}
+                          {member.barcode_base && (
+                            <div className="text-sm text-gray-600">
+                              # {member.barcode_base}
                             </div>
                           )}
                         </div>
@@ -428,48 +426,20 @@ function App() {
                   <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
                     📊 {t('history.title', { name: selectedMember.name })}
                   </h2>
-                  <p className="text-purple-700 mb-3">{t('history.memberId')} {selectedMember.id}</p>
+                  <p className="text-purple-700 mb-3">{t('history.memberNumber')} {selectedMember.barcode_base}</p>
+
+                  {/* Shift Type */}
+                  {memberStatus && memberStatus.shift_type && (
+                    <p className="text-purple-700 mb-3">
+                      {memberStatus.shift_type === 'ftop' ? '⏱️' : '📅'}
+                      {' '}
+                      {memberStatus.shift_type === 'ftop' ? t('counter.ftop') : t('counter.standard')}
+                    </p>
+                  )}
 
                   {/* Member Status Badges */}
                   {memberStatus && (
                     <div className="flex flex-wrap gap-2 mt-4">
-                      {(() => {
-                        // Calculate attended standard shifts in last 13 cycles (excluding current)
-                        const getAttendedStandardShiftsCount = () => {
-                          if (!memberStatus || memberStatus.shift_type !== 'standard' || !cycleConfig) return null
-
-                          const today = new Date().toISOString().split('T')[0]
-                          const currentCycleInfo = getCycleAndWeekForDate(today)
-
-                          if (!currentCycleInfo) return null
-
-                          const currentCycleNumber = currentCycleInfo.cycleNumber
-                          const startCycleNumber = currentCycleNumber - 13
-
-                          const count = historyEvents.filter(event => {
-                            // Only count shift events with standard type
-                            if (event.type !== 'shift' || event.shift_type !== 'standard') return false
-
-                            // Check if attended (done, late but attended, or excused)
-                            const isAttended = event.state === 'done' || event.is_late === true || event.state === 'excused'
-                            if (!isAttended) return false
-
-                            // Get event's cycle
-                            const eventCycleInfo = getCycleAndWeekForDate(event.date)
-                            if (!eventCycleInfo) return false
-
-                            // Include if in last 13 cycles but not current cycle
-                            return eventCycleInfo.cycleNumber < currentCycleNumber &&
-                                   eventCycleInfo.cycleNumber >= startCycleNumber
-                          }).length
-
-                          return count
-                        }
-
-                        const attendedShiftsCount = getAttendedStandardShiftsCount()
-
-                        return (
-                          <>
                       {/* Cooperative State Badge */}
                       {memberStatus.cooperative_state && (
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
@@ -489,18 +459,6 @@ function App() {
                         </span>
                       )}
 
-                      {/* Shift Type Badge */}
-                      {memberStatus.shift_type && (
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
-                          memberStatus.shift_type === 'ftop' ? 'bg-purple-100 text-purple-800 border border-purple-300' :
-                          'bg-blue-100 text-blue-800 border border-blue-300'
-                        }`}>
-                          {memberStatus.shift_type === 'ftop' ? '⏱️' : '📅'}
-                          {' '}
-                          {memberStatus.shift_type === 'ftop' ? t('counter.ftop') : t('counter.standard')}
-                        </span>
-                      )}
-
                       {/* Shopping Privileges */}
                       {memberStatus.customer !== undefined && (
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
@@ -512,59 +470,42 @@ function App() {
                           {memberStatus.customer ? t('status.canShop') : t('status.cannotShop')}
                         </span>
                       )}
-
-                      {/* Standard Shifts Count Badge */}
-                      {attendedShiftsCount !== null && (
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-100 text-indigo-800 border border-indigo-300">
-                          📅 {attendedShiftsCount} {t('history.shiftsInLast13Cycles')}
-                        </span>
-                      )}
-                          </>
-                        )
-                      })()}
                     </div>
                   )}
 
+                  {/* Standard Shifts Count */}
+                  {memberStatus && memberStatus.shift_type === 'standard' && cycleConfig && (
+                    <p className="text-purple-700 mt-3">
+                      {(() => {
+                        const today = new Date().toISOString().split('T')[0]
+                        const currentCycleInfo = getCycleAndWeekForDate(today)
+                        if (!currentCycleInfo) return null
+
+                        const currentCycleNumber = currentCycleInfo.cycleNumber
+                        const startCycleNumber = currentCycleNumber - 13
+
+                        const count = historyEvents.filter(event => {
+                          if (event.type !== 'shift' || event.shift_type !== 'standard') return false
+                          const isAttended = event.state === 'done' || event.is_late === true || event.state === 'excused'
+                          if (!isAttended) return false
+                          const eventCycleInfo = getCycleAndWeekForDate(event.date)
+                          if (!eventCycleInfo) return false
+                          return eventCycleInfo.cycleNumber < currentCycleNumber &&
+                                 eventCycleInfo.cycleNumber >= startCycleNumber
+                        }).length
+
+                        return `📅 ${count} ${t('history.shiftsInLast13Cycles')}`
+                      })()}
+                    </p>
+                  )}
+
                   {/* Counter Summary Widget */}
-                  {historyEvents.length > 0 && (
+                  {counterTotals && (
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                       {(() => {
-                        // Find the most recent counter totals from events
-                        // Search through ALL events to find both counter values
-                        let latestFtopTotal = null
-                        let latestStandardTotal = null
-
-                        // Iterate through events to find the latest counter values
-                        // Events are sorted most recent first, so we capture first occurrence of each counter
-                        for (const event of historyEvents) {
-                          if (event.type === 'shift' && event.counter) {
-                            // Shift events with counter data should have both totals
-                            if (event.counter.ftop_total !== undefined && latestFtopTotal === null) {
-                              latestFtopTotal = event.counter.ftop_total
-                            }
-                            if (event.counter.standard_total !== undefined && latestStandardTotal === null) {
-                              latestStandardTotal = event.counter.standard_total
-                            }
-                          }
-                          if (event.type === 'counter') {
-                            // Manual counter events have both totals regardless of type
-                            if (event.ftop_total !== undefined && latestFtopTotal === null) {
-                              latestFtopTotal = event.ftop_total
-                            }
-                            if (event.standard_total !== undefined && latestStandardTotal === null) {
-                              latestStandardTotal = event.standard_total
-                            }
-                          }
-
-                          // Stop searching once we have both values
-                          if (latestFtopTotal !== null && latestStandardTotal !== null) {
-                            break
-                          }
-                        }
-
-                        // If we still don't have values, default to 0 (member with no counter events yet)
-                        if (latestFtopTotal === null) latestFtopTotal = 0
-                        if (latestStandardTotal === null) latestStandardTotal = 0
+                        // Use counter totals from API response
+                        const latestFtopTotal = counterTotals.ftop ?? 0
+                        const latestStandardTotal = counterTotals.standard ?? 0
 
                         const getCounterStatusColor = (value, isFtop) => {
                           if (value === null || value === undefined) return 'text-gray-600'
@@ -601,7 +542,7 @@ function App() {
                                   <div className="flex items-center gap-2">
                                     <span className="text-2xl">⏱️</span>
                                     <div>
-                                      <div className="text-xs text-gray-500 font-medium">{t('counter.ftop')}</div>
+                                      <div className="text-xs text-gray-500 font-medium">{t('counter.ftopCounter')}</div>
                                       <div className={`text-2xl font-bold ${getCounterStatusColor(latestFtopTotal, true)}`}>
                                         {latestFtopTotal > 0 && '+'}{latestFtopTotal}
                                       </div>
@@ -621,7 +562,7 @@ function App() {
                                   <div className="flex items-center gap-2">
                                     <span className="text-2xl">📅</span>
                                     <div>
-                                      <div className="text-xs text-gray-500 font-medium">{t('counter.standard')}</div>
+                                      <div className="text-xs text-gray-500 font-medium">{t('counter.standardCounter')}</div>
                                       <div className={`text-2xl font-bold ${getCounterStatusColor(latestStandardTotal, false)}`}>
                                         {latestStandardTotal > 0 && '+'}{latestStandardTotal}
                                       </div>
@@ -949,82 +890,65 @@ function App() {
                                             </div>
                                           )}
 
-                                          {/* Exchange Details */}
+                                          {/* Exchange Details - Horizontal Layout */}
                                           {event.exchange_details &&
                                            event.exchange_details.exchange_state &&
-                                           event.exchange_details.exchange_state !== 'draft' && (
+                                           event.exchange_details.exchange_state !== 'draft' &&
+                                           (event.exchange_details.original_shift?.date || event.exchange_details.replacement_shift?.date) && (
                                             <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded">
-                                              <div className="text-xs text-gray-700">
-                                                <div className="flex items-start gap-2">
-                                                  <span className="text-base">🔄</span>
-                                                  <div className="flex-1">
-                                                    <div className="font-semibold text-orange-900 mb-2">
-                                                      {t('exchange.details')}
+                                              <div className="font-semibold text-orange-900 text-xs mb-3">
+                                                {t('exchange.details')}
+                                              </div>
+                                              <div className="grid grid-cols-[1fr_auto_1fr] sm:gap-3 gap-2 items-center">
+                                                {/* Left column - Original shift (In place of) */}
+                                                <div className="flex justify-end">
+                                                  {event.exchange_details.original_shift?.date && (
+                                                    <div className="w-full p-2 bg-white rounded border border-orange-200">
+                                                      <div className="font-medium text-orange-800 text-xs mb-1">
+                                                        {t('exchange.replaces')}
+                                                      </div>
+                                                      <div className="text-xs text-gray-700">
+                                                        <div className="font-medium">{event.exchange_details.original_shift.shift_name || t('exchange.shift')}</div>
+                                                        <div className="text-gray-600 mt-1">
+                                                          📅 {formatDate(event.exchange_details.original_shift.date)}
+                                                          {event.exchange_details.original_shift.week_name && (
+                                                            <span className="ml-1">• {t('timeline.week')} {event.exchange_details.original_shift.week_name}</span>
+                                                          )}
+                                                        </div>
+                                                      </div>
                                                     </div>
+                                                  )}
+                                                </div>
 
-                                                    {/* Original shift that was exchanged away */}
-                                                    {event.exchange_details.replacement_shift && event.exchange_details.replacement_shift.date && (
-                                                      <div className="mb-2 p-2 bg-white rounded border border-orange-100">
-                                                        <div className="font-medium text-orange-800 mb-1">
-                                                          {t('exchange.replacedWith')}
-                                                        </div>
-                                                        <div className="text-gray-700">
-                                                          <div>{event.exchange_details.replacement_shift.shift_name || t('exchange.shift')}</div>
-                                                          <div className="text-xs text-gray-600 mt-1">
-                                                            📅 {formatDate(event.exchange_details.replacement_shift.date)}
-                                                            {event.exchange_details.replacement_shift.week_name && (
-                                                              <span className="ml-2">• Week {event.exchange_details.replacement_shift.week_name}</span>
-                                                            )}
-                                                          </div>
+                                                {/* Center column - Arrow and Exchange Icon */}
+                                                <div className="flex items-center justify-center gap-1 text-orange-400 text-xl py-2 sm:py-0">
+                                                  {event.exchange_details.original_shift?.date && (
+                                                    <span className="hidden sm:inline">→</span>
+                                                  )}
+                                                  <span className="text-2xl">🔄</span>
+                                                  {event.exchange_details.replacement_shift?.date && (
+                                                    <span className="hidden sm:inline">→</span>
+                                                  )}
+                                                </div>
+
+                                                {/* Right column - Replacement shift (Replaced by) */}
+                                                <div className="flex justify-start">
+                                                  {event.exchange_details.replacement_shift?.date && (
+                                                    <div className="w-full p-2 bg-white rounded border border-blue-200">
+                                                      <div className="font-medium text-blue-800 text-xs mb-1">
+                                                        {t('exchange.replacedWith')}
+                                                      </div>
+                                                      <div className="text-xs text-gray-700">
+                                                        <div className="font-medium">{event.exchange_details.replacement_shift.shift_name || t('exchange.shift')}</div>
+                                                        <div className="text-gray-600 mt-1">
+                                                          📅 {formatDate(event.exchange_details.replacement_shift.date)}
+                                                          {event.exchange_details.replacement_shift.week_name && (
+                                                            <span className="ml-1">• {t('timeline.week')} {event.exchange_details.replacement_shift.week_name}</span>
+                                                          )}
                                                         </div>
                                                       </div>
-                                                    )}
-
-                                                    {/* Replacement shift that replaced an original */}
-                                                    {event.exchange_details.original_shift && event.exchange_details.original_shift.date && (
-                                                      <div className="mb-2 p-2 bg-white rounded border border-blue-100">
-                                                        <div className="font-medium text-blue-800 mb-1">
-                                                          {t('exchange.replaces')}
-                                                        </div>
-                                                        <div className="text-gray-700">
-                                                          <div>{event.exchange_details.original_shift.shift_name || t('exchange.shift')}</div>
-                                                          <div className="text-xs text-gray-600 mt-1">
-                                                            📅 {formatDate(event.exchange_details.original_shift.date)}
-                                                            {event.exchange_details.original_shift.week_name && (
-                                                              <span className="ml-2">• Week {event.exchange_details.original_shift.week_name}</span>
-                                                            )}
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    )}
-
-                                                    {/* Counter impact explanation */}
-                                                    {event.exchange_details.counter_impact && (
-                                                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
-                                                        <div className="flex items-start gap-2">
-                                                          <span className="text-sm">✓</span>
-                                                          <div className="text-xs text-green-800">
-                                                            {event.exchange_details.counter_impact === 'no_penalty_attended_replacement' && (
-                                                              <span>{t('exchange.noPenaltyAttended')}</span>
-                                                            )}
-                                                            {event.exchange_details.counter_impact === 'exchanged_for_replacement' && (
-                                                              <span>{t('exchange.exchangedForReplacement')}</span>
-                                                            )}
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    )}
-
-                                                    {/* Show exchange state if no other details available */}
-                                                    {!event.exchange_details.replacement_shift?.date &&
-                                                     !event.exchange_details.original_shift?.date &&
-                                                     !event.exchange_details.counter_impact &&
-                                                     event.exchange_details.exchange_state && (
-                                                      <div className="text-xs text-gray-600">
-                                                        {t('exchange.state')}: <span className="capitalize">{event.exchange_details.exchange_state}</span>
-                                                      </div>
-                                                    )}
-                                                  </div>
+                                                    </div>
+                                                  )}
                                                 </div>
                                               </div>
                                             </div>

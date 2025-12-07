@@ -19,7 +19,7 @@
   },
   "history": {
     "title": "History for {{name}}",
-    "memberId": "Member ID:",
+    "memberNumber": "Member #",
     "comingSoon": "History feature coming soon",
     "comingSoonDetails": "We're working on bringing you detailed member history",
     "shiftsInLast13Cycles": "shifts in last 13 cycles"
@@ -65,8 +65,10 @@
     "manual": "Manual Point Adjustment",
     "points": "Points",
     "total": "Total",
-    "ftop": "FTOP Counter",
-    "standard": "Standard Counter",
+    "ftop": "FTOP plan",
+    "standard": "Standard plan",
+    "ftopCounter": "FTOP counter",
+    "standardCounter": "Standard counter",
     "ftop_short": "FTOP",
     "standard_short": "Standard",
     "noData": "No data",

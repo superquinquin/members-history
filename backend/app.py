@@ -138,6 +138,7 @@ def search_members():
                 {
                     "id": member.get("id"),
                     "name": member.get("name"),
+                    "barcode_base": member.get("barcode_base"),
                     "address": address if address else None,
                     "phone": member.get("phone") or member.get("mobile") or None,
                     "image": image if image else None,
@@ -719,12 +720,20 @@ def get_member_history(member_id):
         # Sort all events chronologically (most recent first)
         events.sort(key=lambda x: x["date"] if x["date"] else "", reverse=True)
 
+        # Get the final counter totals (after all events have been processed)
+        final_ftop_total = ftop_running_total
+        final_standard_total = standard_running_total
+
         return jsonify(
             {
                 "member_id": member_id,
                 "events": events,
                 "leaves": leave_periods,
                 "holidays": holidays,
+                "counter_totals": {
+                    "ftop": int(final_ftop_total),
+                    "standard": int(final_standard_total),
+                },
             }
         )
     except Exception as e:

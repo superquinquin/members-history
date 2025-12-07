@@ -19,7 +19,7 @@
   },
   "history": {
     "title": "Historique pour {{name}}",
-    "memberId": "ID du Membre :",
+    "memberNumber": "N° de Membre :",
     "comingSoon": "Fonctionnalité d'historique à venir",
     "comingSoonDetails": "Nous travaillons pour vous apporter l'historique détaillé des membres",
     "shiftsInLast13Cycles": "services effectués dans les 13 derniers cycles"
@@ -65,8 +65,10 @@
     "manual": "Ajustement Manuel de Points",
     "points": "Points",
     "total": "Total",
-    "ftop": "Compteur Volant",
-    "standard": "Compteur Standard",
+    "ftop": "Régime volant",
+    "standard": "Régime fixe",
+    "ftopCounter": "Compteur volant",
+    "standardCounter": "Compteur ABCD",
     "ftop_short": "Volant",
     "standard_short": "Standard",
     "noData": "Pas de données",
@@ -82,7 +84,7 @@
     "suspended": "Suspendu",
     "blocked": "Bloqué",
     "delay": "Période de Sursis",
-    "canShop": "Peut Faire Courses",
+    "canShop": "Peut Faire Ses Courses",
     "cannotShop": "Courses Bloquées"
   },
   "holiday": {

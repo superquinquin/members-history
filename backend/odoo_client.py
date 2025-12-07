@@ -93,6 +93,7 @@ class OdooClient:
         fields = [
             "id",
             "name",
+            "barcode_base",
             "street",
             "street2",
             "city",
