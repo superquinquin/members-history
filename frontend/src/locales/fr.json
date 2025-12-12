@@ -84,6 +84,11 @@
     "suspended": "Suspendu",
     "blocked": "Bloqué",
     "delay": "Période de Sursis",
+    "unsubscribed": "Désinscrit",
+    "not_concerned": "Non concerné",
+    "exempted": "Exempté",
+    "vacation": "Vacances",
+    "unpayed": "Non payé",
     "canShop": "Peut Faire Ses Courses",
     "cannotShop": "Courses Bloquées"
   },

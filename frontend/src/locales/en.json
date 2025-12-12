@@ -84,6 +84,11 @@
     "suspended": "Suspended",
     "blocked": "Blocked",
     "delay": "Delay Period",
+    "unsubscribed": "Unsubscribed",
+    "not_concerned": "Not Concerned",
+    "exempted": "Exempted",
+    "vacation": "Vacation",
+    "unpayed": "Unpaid",
     "canShop": "Can Shop",
     "cannotShop": "Cannot Shop"
   },
