@@ -42,3 +42,10 @@ Thumbs.db
 # Build artifacts
 *.log
 data/distances
+
+# Working mds
+/*.md
+!README.md
+
+# Local devs/tests
+scripts/
