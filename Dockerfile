@@ -7,11 +7,14 @@ WORKDIR /app/frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install all dependencies (including dev) for build
+RUN npm ci --legacy-peer-deps
 
 # Copy frontend source
 COPY frontend/ ./
+
+# Set API URL to empty string for production (uses relative URLs)
+ENV VITE_API_URL=""
 
 # Build frontend (creates /app/frontend/dist)
 RUN npm run build
@@ -30,9 +33,6 @@ COPY backend/ ./
 
 # Copy built frontend from builder stage
 COPY --from=frontend-builder /app/frontend/dist ./static
-
-# Copy frontend data files (needed for cycles)
-COPY frontend/data ./data
 
 # Expose port
 EXPOSE 5001

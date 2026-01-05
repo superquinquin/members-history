@@ -18,7 +18,10 @@ function App() {
   const [memberShares, setMemberShares] = useState(null)
   const [cycleConfig, setCycleConfig] = useState(null)
 
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+  // Use relative URLs if VITE_API_URL is undefined, otherwise use the provided URL
+  const apiUrl = import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : 'http://localhost:5001'
 
   // Fetch cycle configuration on component mount
   useEffect(() => {
