@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
 odoo = OdooClient()
@@ -850,6 +850,19 @@ def get_member_shares(member_id):
         ), 500
 
 
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    """Serve the React frontend for all non-API routes"""
+    # If requesting a static file (has extension), try to serve it
+    if path and '.' in path:
+        static_file_path = os.path.join(app.static_folder, path)
+        if os.path.exists(static_file_path):
+            return app.send_static_file(path)
+    # Otherwise serve index.html (SPA routing)
+    return app.send_static_file('index.html')
+
+
 if __name__ == "__main__":
     port = int(os.getenv("FLASK_PORT", 5001))
-    app.run(debug=True, port=port)
+    app.run(debug=True, port=port, host='0.0.0.0')

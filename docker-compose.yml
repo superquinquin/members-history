@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  members-history:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      # Odoo connection settings
+      ODOO_URL: ${ODOO_URL}
+      ODOO_DB: ${ODOO_DB}
+      ODOO_USERNAME: ${ODOO_USERNAME}
+      ODOO_PASSWORD: ${ODOO_PASSWORD}
+      # Flask settings
+      FLASK_ENV: production
+      FLASK_PORT: 5001
+    restart: unless-stopped
+    container_name: members-history

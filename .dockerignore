@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Development
+.devenv
+.direnv
+devenv.nix
+devenv.lock
+devenv.yaml
+.envrc
+
+# Python
+backend/__pycache__
+backend/.pytest_cache
+backend/htmlcov
+backend/.coverage
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+backend/.Python
+backend/venv
+backend/env
+
+# Node
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Environment files
+backend/.env
+frontend/.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+*.md
+specs/
+
+# Scripts (not needed in container)
+scripts/
+
+# Tests
+backend/tests
+frontend/src/tests
