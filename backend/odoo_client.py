@@ -521,3 +521,144 @@ class OdooClient:
             "weeks_per_cycle": 4,
             "week_a_date": "2025-01-13",
         }
+
+    def get_member_share_information(self, partner_id: int) -> Dict:
+        """
+        Get member share information including first purchase date and total shares.
+
+        Fetches the member's total shares owned and the date of their first share purchase
+        by examining share ownership records and related subscription invoices.
+
+        Args:
+            partner_id: Member ID
+
+        Returns:
+            Dictionary with:
+            - total_shares: Current total shares owned (int)
+            - first_purchase_date: Date of first share purchase (YYYY-MM-DD string, or None)
+            - share_purchases: List of share purchase events with details
+            - join_date: Alias for first_purchase_date (for UI consistency)
+
+        Raises:
+            Exception: If authentication fails or models proxy not initialized
+        """
+        if not self.uid:
+            if not self.authenticate():
+                raise Exception("Failed to authenticate with Odoo")
+
+        if self.models is None:
+            raise Exception("Models proxy not initialized")
+
+        try:
+            # Step 1: Get total shares from res.partner
+            partner_fields = ["total_partner_owned_share"]
+            partner_data = self.models.execute_kw(
+                self.db,
+                self.uid,
+                self.password,
+                "res.partner",
+                "read",
+                [[partner_id]],
+                {"fields": partner_fields},
+            )
+
+            total_shares = 0
+            if partner_data and len(partner_data) > 0:
+                total_shares = partner_data[0].get("total_partner_owned_share", 0)
+            
+            # Step 2: Get all share ownership records for this member
+            share_domain = [("partner_id", "=", partner_id)]
+            share_fields = [
+                "id",
+                "owned_share",
+                "create_date",
+                "related_invoice_ids"
+            ]
+            
+            share_records = self.models.execute_kw(
+                self.db,
+                self.uid,
+                self.password,
+                "res.partner.owned.share",
+                "search_read",
+                [share_domain],
+                {"fields": share_fields, "order": "create_date asc"},
+            )
+
+            # Step 3: Process share records and related invoices
+            share_purchases = []
+            first_purchase_date = None
+            
+            for share_record in share_records:
+                share_id = share_record.get("id")
+                owned_shares = share_record.get("owned_share", 0)
+                create_date = share_record.get("create_date")
+                invoice_ids = share_record.get("related_invoice_ids", [])
+                
+                # Extract invoice IDs (they come as [id, name] tuples)
+                invoice_id_list = []
+                if invoice_ids:
+                    for inv in invoice_ids:
+                        if isinstance(inv, list) and len(inv) > 0:
+                            invoice_id_list.append(inv[0])
+                        elif isinstance(inv, int):
+                            invoice_id_list.append(inv)
+                
+                # Get invoice details for this share record
+                invoice_details = []
+                if invoice_id_list:
+                    try:
+                        invoice_data = self.models.execute_kw(
+                            self.db,
+                            self.uid,
+                            self.password,
+                            "account.invoice",
+                            "read",
+                            [invoice_id_list],
+                            {"fields": ["id", "date", "number", "state", "amount_total"]},
+                        )
+                        
+                        for inv in invoice_data:
+                            invoice_details.append({
+                                "invoice_id": inv.get("id"),
+                                "invoice_number": inv.get("number"),
+                                "invoice_date": inv.get("date"),
+                                "state": inv.get("state"),
+                                "amount": inv.get("amount_total"),
+                            })
+                            
+                            # Track earliest invoice date as first purchase date
+                            inv_date = inv.get("date")
+                            if inv_date and (first_purchase_date is None or inv_date < first_purchase_date):
+                                first_purchase_date = inv_date
+                                
+                    except Exception as invoice_error:
+                        logger.warning(f"Error fetching invoice details for share {share_id}: {invoice_error}")
+                        continue
+                
+                # Add share purchase event
+                share_purchases.append({
+                    "share_id": share_id,
+                    "shares_purchased": owned_shares,
+                    "purchase_date": create_date,
+                    "invoices": invoice_details,
+                })
+                
+                # If no invoices found, use share create_date as fallback for first purchase
+                if not first_purchase_date and create_date:
+                    first_purchase_date = create_date
+
+            # Step 4: Return structured data
+            result = {
+                "total_shares": int(total_shares),
+                "first_purchase_date": first_purchase_date,
+                "join_date": first_purchase_date,  # Alias for UI consistency
+                "share_purchases": share_purchases,
+            }
+            
+            logger.info(f"Fetched share information for member {partner_id}: {total_shares} shares, first purchase: {first_purchase_date}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error fetching share information for member {partner_id}: {e}", exc_info=True)
+            raise Exception(f"Failed to fetch share information: {str(e)}")

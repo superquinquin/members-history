@@ -18,8 +18,8 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -84,25 +84,30 @@ def get_cycle_config():
 
         # Adjust week_a_date to be one cycle earlier
         from datetime import datetime, timedelta
+
         weeks_per_cycle = config["weeks_per_cycle"]
         original_week_a = datetime.strptime(config["week_a_date"], "%Y-%m-%d")
-        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime("%Y-%m-%d")
+        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime(
+            "%Y-%m-%d"
+        )
 
         adjusted_config = {
             "weeks_per_cycle": weeks_per_cycle,
-            "week_a_date": adjusted_week_a
+            "week_a_date": adjusted_week_a,
         }
 
         return jsonify(adjusted_config)
     except Exception as e:
         logger.error(f"Error fetching shift config: {e}", exc_info=True)
         # Return default configuration as fallback (also adjusted)
-        return jsonify({
-            "weeks_per_cycle": 4,
-            "week_a_date": "2024-12-16",  # One cycle before 2025-01-13
-            "error": "Using default configuration due to error",
-            "error_details": str(e)
-        }), 200  # Still return 200 with defaults
+        return jsonify(
+            {
+                "weeks_per_cycle": 4,
+                "week_a_date": "2024-12-16",  # One cycle before 2025-01-13
+                "error": "Using default configuration due to error",
+                "error_details": str(e),
+            }
+        ), 200  # Still return 200 with defaults
 
 
 @app.route("/api/members/search", methods=["GET"])
@@ -184,7 +189,9 @@ def get_member_status(member_id):
             }
         )
     except Exception as e:
-        logger.error(f"Error fetching member status for member {member_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching member status for member {member_id}: {e}", exc_info=True
+        )
         return jsonify({"error": str(e)}), 500
 
 
@@ -246,20 +253,27 @@ def get_member_history(member_id):
         # Adjust week_a_date to be one cycle earlier so Cycle 1 starts earlier
         # This shifts all cycle numbering by +1 (current Cycle 12 becomes Cycle 13)
         from datetime import datetime, timedelta
+
         weeks_per_cycle = shift_config["weeks_per_cycle"]
         original_week_a = datetime.strptime(shift_config["week_a_date"], "%Y-%m-%d")
-        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime("%Y-%m-%d")
+        adjusted_week_a = (original_week_a - timedelta(weeks=weeks_per_cycle)).strftime(
+            "%Y-%m-%d"
+        )
 
         # Create adjusted config with earlier week_a_date
         adjusted_config = {
             "weeks_per_cycle": shift_config["weeks_per_cycle"],
-            "week_a_date": adjusted_week_a
+            "week_a_date": adjusted_week_a,
         }
 
         # Calculate date range for last 13 cycles using adjusted config
-        start_date, end_date = get_last_n_cycles_date_range(n=13, shift_config=adjusted_config)
+        start_date, end_date = get_last_n_cycles_date_range(
+            n=13, shift_config=adjusted_config
+        )
 
-        logger.info(f"Fetching member {member_id} history from {start_date} to {end_date} (Cycle 1 starts {adjusted_week_a})")
+        logger.info(
+            f"Fetching member {member_id} history from {start_date} to {end_date} (Cycle 1 starts {adjusted_week_a})"
+        )
 
         # Store adjusted config for use in event processing
         shift_config = adjusted_config
@@ -277,14 +291,17 @@ def get_member_history(member_id):
         except Exception as counter_error:
             logger.warning(
                 f"Error fetching counter events for member {member_id} (continuing without): {counter_error}",
-                exc_info=True
+                exc_info=True,
             )
 
         try:
             # Fetch holidays for the date range
             holidays = odoo.get_holidays(start_date=start_date, end_date=end_date)
         except Exception as holiday_error:
-            logger.warning(f"Error fetching holidays (continuing without): {holiday_error}", exc_info=True)
+            logger.warning(
+                f"Error fetching holidays (continuing without): {holiday_error}",
+                exc_info=True,
+            )
 
         # Sort counter events chronologically (oldest first) for proper aggregation
         # Handle missing create_date gracefully
@@ -304,7 +321,6 @@ def get_member_history(member_id):
             counter_type = counter_event.get("type", "standard")
 
             if shift_id:
-
                 # Choose the right map based on counter type
                 shift_map = (
                     ftop_shift_map if counter_type == "ftop" else standard_shift_map
@@ -449,7 +465,9 @@ def get_member_history(member_id):
                 # Merge point quantities instead of overwriting
                 shift_counter_map[shift_id]["point_qty"] += data.get("point_qty", 0)
                 # Keep the later create_date
-                if data.get("create_date", "") > shift_counter_map[shift_id].get("create_date", ""):
+                if data.get("create_date", "") > shift_counter_map[shift_id].get(
+                    "create_date", ""
+                ):
                     shift_counter_map[shift_id]["create_date"] = data["create_date"]
             else:
                 shift_counter_map[shift_id] = data
@@ -484,12 +502,23 @@ def get_member_history(member_id):
                     "shift.registration",
                     "read",
                     list(exchange_reg_ids),
-                    fields=["id", "date_begin", "date_end", "shift_id", "partner_id", "state"]
+                    fields=[
+                        "id",
+                        "date_begin",
+                        "date_end",
+                        "shift_id",
+                        "partner_id",
+                        "state",
+                    ],
                 )
 
                 # Also fetch shift details for these registrations
-                exchange_shift_ids = [extract_id(r.get("shift_id")) for r in reg_data if r.get("shift_id")]
-                exchange_shift_ids = [sid for sid in exchange_shift_ids if sid is not None]
+                exchange_shift_ids = [
+                    extract_id(r.get("shift_id")) for r in reg_data if r.get("shift_id")
+                ]
+                exchange_shift_ids = [
+                    sid for sid in exchange_shift_ids if sid is not None
+                ]
 
                 exchange_shift_data = {}
                 if exchange_shift_ids:
@@ -497,7 +526,7 @@ def get_member_history(member_id):
                         "shift.shift",
                         "read",
                         exchange_shift_ids,
-                        fields=["id", "name", "date_begin", "week_number", "week_name"]
+                        fields=["id", "name", "date_begin", "week_number", "week_name"],
                     )
                     exchange_shift_data = {s["id"]: s for s in shift_results}
 
@@ -507,8 +536,12 @@ def get_member_history(member_id):
                     if shift_id and shift_id in exchange_shift_data:
                         reg["shift_name"] = exchange_shift_data[shift_id]["name"]
                         reg["shift_date"] = exchange_shift_data[shift_id]["date_begin"]
-                        reg["week_number"] = exchange_shift_data[shift_id].get("week_number")
-                        reg["week_name"] = exchange_shift_data[shift_id].get("week_name")
+                        reg["week_number"] = exchange_shift_data[shift_id].get(
+                            "week_number"
+                        )
+                        reg["week_name"] = exchange_shift_data[shift_id].get(
+                            "week_name"
+                        )
                     exchange_registrations[reg["id"]] = reg
             except Exception as e:
                 logger.warning(f"Failed to fetch exchange registration details: {e}")
@@ -529,10 +562,12 @@ def get_member_history(member_id):
             for shift in shifts:
                 # Debug: log exchange fields for waiting/replaced shifts
                 if shift.get("state") in ["waiting", "replaced"]:
-                    logger.info(f"Shift {shift.get('id')} state={shift.get('state')}: "
-                               f"replaced_reg_id={shift.get('replaced_reg_id')}, "
-                               f"exchange_replacing_reg_id={shift.get('exchange_replacing_reg_id')}, "
-                               f"exchange_replaced_reg_id={shift.get('exchange_replaced_reg_id')}")
+                    logger.info(
+                        f"Shift {shift.get('id')} state={shift.get('state')}: "
+                        f"replaced_reg_id={shift.get('replaced_reg_id')}, "
+                        f"exchange_replacing_reg_id={shift.get('exchange_replacing_reg_id')}, "
+                        f"exchange_replaced_reg_id={shift.get('exchange_replaced_reg_id')}"
+                    )
 
                 shift_id = extract_id(shift.get("shift_id"))
 
@@ -547,7 +582,11 @@ def get_member_history(member_id):
                 # For technical FTOP shifts (cycle closing), use counter event date (when shift was closed)
                 # Check shift_type_id to distinguish technical FTOP from Standard shifts attended by FTOP members
                 is_technical_ftop = False
-                if shift_type_id and isinstance(shift_type_id, list) and len(shift_type_id) > 1:
+                if (
+                    shift_type_id
+                    and isinstance(shift_type_id, list)
+                    and len(shift_type_id) > 1
+                ):
                     type_name = shift_type_id[1].lower()
                     is_technical_ftop = "ftop" in type_name or "volant" in type_name
 
@@ -586,7 +625,8 @@ def get_member_history(member_id):
                 if replacement_reg_id and replacement_reg_id in exchange_registrations:
                     replacement_reg = exchange_registrations[replacement_reg_id]
                     exchange_details["replacement_shift"] = {
-                        "date": replacement_reg.get("shift_date") or replacement_reg.get("date_begin"),
+                        "date": replacement_reg.get("shift_date")
+                        or replacement_reg.get("date_begin"),
                         "shift_name": replacement_reg.get("shift_name"),
                         "week_number": replacement_reg.get("week_number"),
                         "week_name": replacement_reg.get("week_name"),
@@ -598,7 +638,8 @@ def get_member_history(member_id):
                 if original_reg_id and original_reg_id in exchange_registrations:
                     original_reg = exchange_registrations[original_reg_id]
                     exchange_details["original_shift"] = {
-                        "date": original_reg.get("shift_date") or original_reg.get("date_begin"),
+                        "date": original_reg.get("shift_date")
+                        or original_reg.get("date_begin"),
                         "shift_name": original_reg.get("shift_name"),
                         "week_number": original_reg.get("week_number"),
                         "week_name": original_reg.get("week_name"),
@@ -606,15 +647,25 @@ def get_member_history(member_id):
 
                 # Add counter impact explanation
                 if shift.get("is_exchange") and shift.get("state") == "done":
-                    exchange_details["counter_impact"] = "no_penalty_attended_replacement"
-                elif shift.get("is_exchanged") and replacement_reg_id and replacement_reg_id in exchange_registrations:
+                    exchange_details["counter_impact"] = (
+                        "no_penalty_attended_replacement"
+                    )
+                elif (
+                    shift.get("is_exchanged")
+                    and replacement_reg_id
+                    and replacement_reg_id in exchange_registrations
+                ):
                     replacement_reg = exchange_registrations[replacement_reg_id]
                     # Check if replacement was attended (would need to check the registration state)
                     exchange_details["counter_impact"] = "exchanged_for_replacement"
 
                 # Add exchange state ONLY if we have actual exchange relationship data or counter impact
                 # This prevents showing exchange details for "waiting" shifts that are just during leave
-                if "replacement_shift" in exchange_details or "original_shift" in exchange_details or "counter_impact" in exchange_details:
+                if (
+                    "replacement_shift" in exchange_details
+                    or "original_shift" in exchange_details
+                    or "counter_impact" in exchange_details
+                ):
                     exchange_state = shift.get("exchange_state")
                     if exchange_state:
                         exchange_details["exchange_state"] = exchange_state
@@ -638,12 +689,14 @@ def get_member_history(member_id):
 
                 # Debug logging for waiting/replaced shifts
                 if shift.get("state") in ["waiting", "replaced"]:
-                    logger.info(f"Shift {shift.get('id')} ({shift.get('shift_name')}) state={shift.get('state')}: "
-                               f"is_exchanged={shift.get('is_exchanged')}, "
-                               f"exchange_state={shift.get('exchange_state')}, "
-                               f"has_exchange_details={bool(exchange_details)}, "
-                               f"exchange_details_keys={list(exchange_details.keys()) if exchange_details else []}, "
-                               f"sent_is_exchanged={shift_event.get('is_exchanged')}")
+                    logger.info(
+                        f"Shift {shift.get('id')} ({shift.get('shift_name')}) state={shift.get('state')}: "
+                        f"is_exchanged={shift.get('is_exchanged')}, "
+                        f"exchange_state={shift.get('exchange_state')}, "
+                        f"has_exchange_details={bool(exchange_details)}, "
+                        f"exchange_details_keys={list(exchange_details.keys()) if exchange_details else []}, "
+                        f"sent_is_exchanged={shift_event.get('is_exchanged')}"
+                    )
 
                 events.append(shift_event)
 
@@ -662,9 +715,13 @@ def get_member_history(member_id):
                                 "id": counter_event.get("id"),
                                 "date": event_date,
                                 "point_qty": counter_event.get("point_qty", 0),
-                                "sum_current_qty": counter_event.get("sum_current_qty", 0),
+                                "sum_current_qty": counter_event.get(
+                                    "sum_current_qty", 0
+                                ),
                                 "ftop_total": counter_event.get("ftop_total", 0),
-                                "standard_total": counter_event.get("standard_total", 0),
+                                "standard_total": counter_event.get(
+                                    "standard_total", 0
+                                ),
                                 "name": counter_event.get("name", ""),
                                 "counter_type": counter_event.get("type", ""),
                             }
@@ -737,8 +794,60 @@ def get_member_history(member_id):
             }
         )
     except Exception as e:
-        logger.error(f"Error fetching member history for member {member_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching member history for member {member_id}: {e}", exc_info=True
+        )
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/member/<int:member_id>/shares", methods=["GET"])
+def get_member_shares(member_id):
+    """
+    Get member share information including join date and total shares.
+
+    Returns:
+        JSON with share data for frontend display:
+        - total_shares: Current total shares owned
+        - join_date: Date of first share purchase (YYYY-MM-DD)
+        - first_purchase_date: Same as join_date
+        - share_purchases: List of share purchase events
+    """
+    # Validate member_id
+    try:
+        member_id = validate_positive_int(member_id, "member_id")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        # Fetch share information from Odoo
+        share_data = odoo.get_member_share_information(member_id)
+
+        # Format the response for frontend
+        response = {
+            "member_id": member_id,
+            "total_shares": share_data.get("total_shares", 0),
+            "join_date": share_data.get("join_date"),
+            "first_purchase_date": share_data.get("first_purchase_date"),
+            "share_purchases": share_data.get("share_purchases", []),
+        }
+
+        logger.info(f"Successfully fetched share data for member {member_id}")
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(
+            f"Error fetching share data for member {member_id}: {e}", exc_info=True
+        )
+        return jsonify(
+            {
+                "error": str(e),
+                "member_id": member_id,
+                "total_shares": 0,
+                "join_date": None,
+                "first_purchase_date": None,
+                "share_purchases": [],
+            }
+        ), 500
 
 
 if __name__ == "__main__":

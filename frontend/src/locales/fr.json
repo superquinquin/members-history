@@ -121,5 +121,12 @@
     "days": "jours",
     "noPenalty": "Les absences pendant le congé n'ont pas de pénalité",
     "ftopPointUsed": "Utilise 1 point volant si disponible"
+  },
+  "member": {
+    "joinDate": "Membre depuis",
+    "totalShares": "Parts détenues",
+    "shares": "parts",
+    "firstPurchase": "Premier achat de parts",
+    "shareHistory": "Historique des achats de parts"
   }
 }

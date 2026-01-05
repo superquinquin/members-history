@@ -121,5 +121,12 @@
     "days": "days",
     "noPenalty": "Absences during leave have no penalty",
     "ftopPointUsed": "Uses 1 FTOP point if available"
+  },
+  "member": {
+    "joinDate": "Joined",
+    "totalShares": "Shares Owned",
+    "shares": "shares",
+    "firstPurchase": "First Share Purchase",
+    "shareHistory": "Share Purchase History"
   }
 }
