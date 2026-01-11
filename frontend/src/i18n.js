@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next'
 import en from './locales/en.json'
 import fr from './locales/fr.json'
 
-const savedLanguage = localStorage.getItem('language') || 'en'
+const savedLanguage = localStorage.getItem('language') || 'fr'
 
 i18n
   .use(initReactI18next)
@@ -13,7 +13,7 @@ i18n
       fr: { translation: fr }
     },
     lng: savedLanguage,
-    fallbackLng: 'en',
+    fallbackLng: 'fr',
     interpolation: {
       escapeValue: false
     }
