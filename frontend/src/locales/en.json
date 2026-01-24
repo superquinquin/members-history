@@ -127,6 +127,22 @@
     "totalShares": "Shares Owned",
     "shares": "shares",
     "firstPurchase": "First Share Purchase",
-    "shareHistory": "Share Purchase History"
+    "shareHistory": "Share Purchase History",
+    "cooperativeInfo": "Cooperative Information",
+    "shiftAttendance": "Shift & Attendance",
+    "shiftType": "Shift Type",
+    "recentAttendance": "Recent Attendance"
+  },
+  "pair": {
+    "label": "Pair Member",
+    "binome": "Pair Member (Binôme)",
+    "mainMember": "Main member",
+    "associatedMember": "Associated member",
+    "classicalProfile": "Classical Profile (owns shares)",
+    "shoppingProfile": "Shopping Profile",
+    "otherProfile": "Paired with",
+    "pairMembers": "Pair Members",
+    "sharedShifts": "Shared shift obligations",
+    "sharedObligations": "Shifts and counters are shared. Purchases and leaves are individual."
   }
 }

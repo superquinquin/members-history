@@ -117,9 +117,9 @@ Search for cooperative members by name with real-time results from the Odoo back
   "members": [
     {
       "id": 267,
-      "name": "NIVET, Rémi",
-      "address": "233 rue nationale, 59800, Lille",
-      "phone": "06 79 46 09 36",
+      "name": "DOE, John",
+      "address": "243 rue Marcel",
+      "phone": "06 12 34 45 43",
       "image": "base64_encoded_string_or_null"
     }
   ]
@@ -133,7 +133,7 @@ Search for cooperative members by name with real-time results from the Odoo back
 - Images are base64-encoded JPEG/PNG data
 - Frontend displays images as circular avatars (64x64px) with border styling
 - **Fallback:** When no image is available, displays gradient circle with member initials
-  - Initials extracted from name (e.g., "NIVET, Rémi" → "NR")
+  - Initials extracted from name (e.g., "DOE, John" → "DJ")
   - Gradient background: purple-to-pink matching app theme
 
 **Backend Fields:**

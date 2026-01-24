@@ -127,6 +127,22 @@
     "totalShares": "Parts détenues",
     "shares": "parts",
     "firstPurchase": "Premier achat de parts",
-    "shareHistory": "Historique des achats de parts"
+    "shareHistory": "Historique des achats de parts",
+    "cooperativeInfo": "Informations Coopérative",
+    "shiftAttendance": "Services & Présence",
+    "shiftType": "Type de service",
+    "recentAttendance": "Présence récente"
+  },
+  "pair": {
+    "label": "Membre Binôme",
+    "binome": "Membre Binôme",
+    "mainMember": "Membre principal",
+    "associatedMember": "Membre associé",
+    "classicalProfile": "Profil classique (détient des parts)",
+    "shoppingProfile": "Profil rattaché",
+    "otherProfile": "En binôme avec",
+    "pairMembers": "Membres Binôme",
+    "sharedShifts": "Obligations partagées",
+    "sharedObligations": "Services et compteurs partagés. Achats et congés individuels."
   }
 }

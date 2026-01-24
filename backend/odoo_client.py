@@ -1,7 +1,7 @@
 import xmlrpc.client
 import os
 import logging
-from typing import Optional, Dict, List, Any, cast
+from typing import Optional, Dict, List, Any
 from utils import extract_id, extract_name
 
 # Load environment variables from .env file
@@ -104,6 +104,11 @@ class OdooClient:
             "image",
             "image_small",
             "image_medium",
+            "parent_id",
+            "child_ids",
+            "nb_associated_people",
+            "category_id",  # Changed from category_ids to category_id (singular)
+            "is_unsubscribed",
         ]
         results = self.search_read("res.partner", domain, fields)
         logger.info(f"Search members by name '{name}': found {len(results)} results")
@@ -132,11 +137,16 @@ class OdooClient:
         fields = [
             "id",
             "name",
+            "barcode_base",
             "cooperative_state",
             "is_worker_member",
             "shift_type",
             "is_unsubscribed",
             "customer",
+            "parent_id",
+            "child_ids",
+            "nb_associated_people",
+            "category_id",  # Changed from category_ids to category_id (singular)
         ]
 
         results = self.models.execute_kw(
@@ -658,7 +668,197 @@ class OdooClient:
             
             logger.info(f"Fetched share information for member {partner_id}: {total_shares} shares, first purchase: {first_purchase_date}")
             return result
-            
+
         except Exception as e:
             logger.error(f"Error fetching share information for member {partner_id}: {e}", exc_info=True)
             raise Exception(f"Failed to fetch share information: {str(e)}")
+
+    def detect_pair_relationship(self, member_data: Dict) -> Dict:
+        """
+        Detect if member is part of a pair (binôme).
+
+        Example structure:
+        - Main member "DOE, John" : NO tag, has child "DUPONT, Roger" (associated_people)
+        - Associated member (DUPONT): TWO profiles with same name + tag
+          - Classical: tag "Cooperateur associe", unsubscribed, no parent
+          - Associated_people: tag "Cooperateur associe", parent = DOE
+
+        Args:
+            member_data: Dictionary containing member information with fields:
+                id, name, category_ids, parent_id, child_ids
+
+        Returns:
+            Dictionary with:
+            - is_pair: bool
+            - pair_type: 'main' | 'associated_classical' | 'associated_shopping'
+            - main_member_id: int
+            - main_member_name: str
+            - classical_profile_id: int (DUPONT classical)
+            - shopping_profile_id: int (DUPONT associated_people)
+            - other_profile_id: int (the other profile to display)
+            - pair_member_id: int (alias for other_profile_id, for compatibility)
+        """
+        from utils import has_cooperateur_associe_tag, extract_id
+
+        try:
+            has_pair_tag = has_cooperateur_associe_tag(member_data.get("category_id"))
+            member_name = member_data.get("name")
+            member_id = member_data.get("id")
+
+            logger.debug(f"Detecting pair for member {member_id} ({member_name}), has_pair_tag: {has_pair_tag}")
+
+            # Case 1: Profile WITH tag (DUPONT)
+            if has_pair_tag:
+                parent_id = extract_id(member_data.get("parent_id"))
+
+                if parent_id:
+                    # This is DUPONT's associated_people profile (shopping profile)
+                    # Search for DUPONT's classical profile (same name + tag, no parent)
+                    logger.debug(f"Member {member_id} has tag and parent {parent_id}, searching for classical profile")
+                    domain = [("name", "=", member_name), ("category_id", "in", [3])]
+                    classical_profiles = self.search_read("res.partner", domain, ["id", "name", "parent_id"])
+
+                    # Find the one without parent (classical profile)
+                    classical_profile = next((p for p in classical_profiles if not p.get("parent_id")), None)
+
+                    if classical_profile:
+                        # Fetch parent name
+                        parent_info = self.execute("res.partner", "read", [parent_id], ["name"])
+                        parent_name = parent_info[0].get("name", "") if parent_info and len(parent_info) > 0 else ""
+
+                        logger.info(f"Detected pair: {member_name} (shopping profile) paired with {parent_name} (main)")
+                        return {
+                            "is_pair": True,
+                            "pair_type": "associated_shopping",
+                            "main_member_id": parent_id,
+                            "main_member_name": parent_name,
+                            "classical_profile_id": classical_profile["id"],
+                            "shopping_profile_id": member_id,
+                            "other_profile_id": parent_id,
+                            "pair_member_id": parent_id,  # Compatibility
+                        }
+                else:
+                    # This is DUPONT's classical profile (owns shares, unsubscribed)
+                    # Search for DUPONT's associated_people profile (same name + tag + has parent)
+                    logger.debug(f"Member {member_id} has tag but no parent, searching for shopping profile")
+                    domain = [("name", "=", member_name), ("category_id", "in", [3])]
+                    shopping_profiles = self.search_read("res.partner", domain, ["id", "name", "parent_id"])
+
+                    # Find the one WITH parent (associated_people profile)
+                    shopping_profile = next((p for p in shopping_profiles if p.get("parent_id")), None)
+
+                    if shopping_profile:
+                        parent_id = extract_id(shopping_profile["parent_id"])
+                        parent_name = shopping_profile["parent_id"][1] if isinstance(shopping_profile["parent_id"], list) else ""
+
+                        logger.info(f"Detected pair: {member_name} (classical profile) paired with {parent_name} (main)")
+                        return {
+                            "is_pair": True,
+                            "pair_type": "associated_classical",
+                            "main_member_id": parent_id,
+                            "main_member_name": parent_name,
+                            "classical_profile_id": member_id,
+                            "shopping_profile_id": shopping_profile["id"],
+                            "other_profile_id": parent_id,
+                            "pair_member_id": parent_id,  # Compatibility
+                        }
+
+            # Case 2: Profile WITHOUT tag (DOE - main member)
+            else:
+                child_ids = member_data.get("child_ids", [])
+                if child_ids:
+                    logger.debug(f"Member {member_id} has no tag but has {len(child_ids)} children, checking for pair")
+                    # Check children for profiles with tag
+                    children = self.execute("res.partner", "read", child_ids, ["id", "name", "category_id"])
+                    logger.debug(f"Fetched {len(children)} children: {children}")
+
+                    for child in children:
+                        child_category_id = child.get("category_id")
+                        logger.debug(f"Checking child {child.get('id')}: category_id={child_category_id}")
+                        if has_cooperateur_associe_tag(child_category_id):
+                            logger.debug(f"Child {child.get('id')} has cooperateur associe tag!")
+                            child_name = child.get("name")
+                            child_id = child.get("id")
+
+                            logger.debug(f"Found tagged child {child_id} ({child_name}), searching for classical profile")
+                            # Search for classical profile with same name as this child + tag
+                            domain = [("name", "=", child_name), ("category_id", "in", [3])]
+                            matching_profiles = self.search_read("res.partner", domain, ["id", "name", "parent_id"])
+
+                            # Find classical profile (no parent)
+                            classical_profile = next((p for p in matching_profiles if not p.get("parent_id")), None)
+
+                            if classical_profile:
+                                # This confirms it's a pair!
+                                logger.info(f"Detected pair: {member_name} (main) paired with {child_name}")
+                                return {
+                                    "is_pair": True,
+                                    "pair_type": "main",
+                                    "main_member_id": member_id,
+                                    "main_member_name": member_name,
+                                    "classical_profile_id": classical_profile["id"],
+                                    "shopping_profile_id": child_id,
+                                    "other_profile_id": classical_profile["id"],
+                                    "pair_member_id": classical_profile["id"],  # Compatibility
+                                }
+
+            logger.debug(f"Member {member_id} is not part of a pair")
+            return {"is_pair": False}
+
+        except Exception as e:
+            logger.error(f"Error detecting pair relationship for member {member_data.get('id')}: {e}", exc_info=True)
+            return {"is_pair": False}
+
+    def get_pair_profiles(self, pair_info_list: List[Dict]) -> Dict[int, Dict]:
+        """
+        Batch fetch other profiles for detected pairs.
+
+        This method optimizes API calls by fetching all other profiles in a single
+        batch request instead of making individual requests for each pair.
+
+        Args:
+            pair_info_list: List of pair_info dicts with other_profile_id
+
+        Returns:
+            Dict mapping other_profile_id to profile data
+
+        Example:
+            >>> pair_info_list = [
+            ...     {"is_pair": True, "other_profile_id": 100},
+            ...     {"is_pair": True, "other_profile_id": 200},
+            ...     {"is_pair": False}
+            ... ]
+            >>> profiles = odoo.get_pair_profiles(pair_info_list)
+            >>> # Returns: {100: {...profile data...}, 200: {...profile data...}}
+        """
+        try:
+            # Extract unique other_profile_ids from pairs
+            other_profile_ids = list(set(
+                p["other_profile_id"]
+                for p in pair_info_list
+                if p.get("is_pair") and p.get("other_profile_id")
+            ))
+
+            if not other_profile_ids:
+                logger.debug("No pair profiles to fetch")
+                return {}
+
+            logger.info(f"Batch fetching {len(other_profile_ids)} pair profiles")
+
+            # Batch fetch all profiles
+            fields = [
+                "id", "name", "barcode_base", "cooperative_state",
+                "is_worker_member", "shift_type", "customer",
+                "is_unsubscribed", "category_id"
+            ]
+            profiles = self.execute("res.partner", "read", other_profile_ids, fields)
+
+            # Create lookup dict
+            profile_map = {p["id"]: p for p in profiles}
+            logger.debug(f"Fetched {len(profile_map)} pair profiles")
+
+            return profile_map
+
+        except Exception as e:
+            logger.error(f"Error batch fetching pair profiles: {e}", exc_info=True)
+            return {}

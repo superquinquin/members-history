@@ -1885,7 +1885,7 @@ Many2one fields are returned as tuples: `[id, name]`
 shift_type_id = [1, 'FTOP']
 shift_id = [11986, 'Monday Morning Team A']
 type_id = [5, 'Vacation']
-parent_id = [267, 'NIVET, Rémi']
+parent_id = [267, 'DOE, John']
 ```
 
 **Handling in Code:**

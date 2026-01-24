@@ -7,8 +7,7 @@ Odoo Many2one fields and validating inputs.
 
 import json
 import os
-from datetime import datetime
-from typing import Any, Optional, Union, Dict
+from typing import Any, Optional, Dict
 
 
 def extract_id(many2one_field: Any) -> Optional[int]:
@@ -240,3 +239,68 @@ def get_last_n_cycles_date_range(
         weeks_per_cycle=shift_config["weeks_per_cycle"],
         end_date=today
     )
+
+
+def has_cooperateur_associe_tag(category_id: Any) -> bool:
+    """
+    Check if member has the "Cooperateur associe" tag.
+
+    In this Odoo instance, the field is called category_id (singular) and contains
+    a simple list of tag IDs like [3]. The "Cooperateur associe" tag has ID 3.
+
+    Args:
+        category_id: Value from res.partner.category_id field
+                     Can be a list of IDs like [3], or None/False
+
+    Returns:
+        True if the member has the "Cooperateur associe" tag (ID 3)
+
+    Examples:
+        >>> has_cooperateur_associe_tag([3])
+        True
+        >>> has_cooperateur_associe_tag([3, 1])
+        True
+        >>> has_cooperateur_associe_tag([1, 2])
+        False
+        >>> has_cooperateur_associe_tag([])
+        False
+        >>> has_cooperateur_associe_tag(None)
+        False
+    """
+    if not category_id or not isinstance(category_id, list):
+        return False
+
+    # The "Cooperateur associe" tag has ID 3 in this Odoo instance
+    return 3 in category_id
+
+
+def strip_barcode_prefix(name: Optional[str]) -> Optional[str]:
+    """
+    Strip barcode prefix from member name.
+
+    Some member names in Odoo include a barcode prefix pattern like "1111 - DOE, John".
+    This function removes that prefix to get just the name.
+
+    Args:
+        name: Member name, possibly with barcode prefix
+
+    Returns:
+        Name with barcode prefix removed, or None if input is None
+
+    Examples:
+        >>> strip_barcode_prefix("1111 - DOE, John")
+        "DOE, John"
+        >>> strip_barcode_prefix("DOE, John")
+        "DOE, John"
+        >>> strip_barcode_prefix(None)
+        None
+    """
+    import re
+
+    if not name:
+        return name
+
+    # Pattern: digits followed by " - " at the start of the string
+    # Example: "1111 - DOE, John" -> "DOE, John"
+    pattern = r'^\d+ - '
+    return re.sub(pattern, '', name)

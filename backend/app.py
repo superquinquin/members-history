@@ -7,10 +7,9 @@ from typing import Dict, Optional, Any, Tuple
 from odoo_client import OdooClient
 from utils import (
     extract_id,
-    extract_name,
-    is_valid_many2one,
     validate_positive_int,
     get_last_n_cycles_date_range,
+    strip_barcode_prefix,
 )
 
 load_dotenv()
@@ -110,6 +109,42 @@ def get_cycle_config():
         ), 200  # Still return 200 with defaults
 
 
+def merge_pair_profiles(members, pair_info_list, pair_profiles):
+    """
+    Merge profiles that belong to the same pair into single results.
+
+    - Groups profiles by pair identity (main_member_id for associated members)
+    - Creates merged name with both members (e.g., "DOE & DUPONT")
+    - Deduplicates so each pair appears only once
+    - Non-pairs pass through unchanged
+
+    Args:
+        members: List of member dicts from search
+        pair_info_list: List of pair_info dicts (parallel to members)
+        pair_profiles: Dict of other_profile data (from odoo.get_pair_profiles)
+
+    Returns:
+        List of tuples (member, pair_info) - deduplicated with merged names
+    """
+    # Group by pair identity
+    pairs_seen = {}  # Maps pair_identity -> (member_index, pair_info, member_data)
+    results = []
+
+    for i, (member, pair_info) in enumerate(zip(members, pair_info_list)):
+        # Get pair identity - use main_member_id if associated, else own id
+        if pair_info.get("is_pair"):
+            pair_identity = pair_info.get("main_member_id")
+        else:
+            pair_identity = member.get("id")
+
+        # If we haven't seen this pair, add it
+        if pair_identity not in pairs_seen:
+            pairs_seen[pair_identity] = (i, pair_info, member)
+            results.append((i, pair_info, member))
+
+    return results
+
+
 @app.route("/api/members/search", methods=["GET"])
 def search_members():
     name = request.args.get("name", "")
@@ -123,9 +158,29 @@ def search_members():
     try:
         members = odoo.search_members_by_name(name)
         logger.info(f"Processing {len(members)} members for search query: {name}")
-        result = []
+
+        # Detect pairs for all members
+        pair_info_list = []
         for member in members:
+            try:
+                pair_info = odoo.detect_pair_relationship(member)
+                pair_info_list.append(pair_info)
+            except Exception as e:
+                logger.warning(f"Pair detection failed for member {member.get('id')}: {e}")
+                pair_info_list.append({"is_pair": False})
+
+        # Batch fetch other profiles for pairs
+        pair_profiles = odoo.get_pair_profiles(pair_info_list)
+
+        # Merge paired profiles to deduplicate results
+        merged_results = merge_pair_profiles(members, pair_info_list, pair_profiles)
+        logger.info(f"After merging pairs: {len(members)} members -> {len(merged_results)} results")
+
+        # Build results with pair info
+        result = []
+        for i, pair_info, member in merged_results:
             logger.debug(f"Member data: {member}")
+
             address_parts = [
                 member.get("street"),
                 member.get("street2"),
@@ -139,17 +194,49 @@ def search_members():
                 or member.get("image_medium")
                 or member.get("image")
             )
-            result.append(
-                {
-                    "id": member.get("id"),
-                    "name": member.get("name"),
-                    "barcode_base": member.get("barcode_base"),
-                    "address": address if address else None,
-                    "phone": member.get("phone") or member.get("mobile") or None,
-                    "image": image if image else None,
-                    "raw": member,
-                }
-            )
+
+            # Build merged name if this is a pair
+            name = member.get("name")
+            if pair_info.get("is_pair"):
+                main_name = pair_info.get("main_member_name", "")
+                pair_type = pair_info.get("pair_type")
+
+                # Determine which name to use for the associated member
+                if pair_type == "main":
+                    # Viewing main member: other_profile is classical profile
+                    other_profile_id = pair_info.get("other_profile_id")
+                    if other_profile_id and other_profile_id in pair_profiles:
+                        associated_name = pair_profiles[other_profile_id].get("name", "")
+                    else:
+                        associated_name = ""
+                else:
+                    # Viewing associated member (classical or shopping): use current member's name
+                    associated_name = member.get("name")
+
+                if main_name and associated_name:
+                    # Strip barcode prefix from both names before merging
+                    main_name = strip_barcode_prefix(main_name)
+                    associated_name = strip_barcode_prefix(associated_name)
+                    name = f"{main_name} & {associated_name}"
+
+            result_item = {
+                "id": member.get("id"),
+                "name": name,
+                "barcode_base": member.get("barcode_base"),
+                "address": address if address else None,
+                "phone": member.get("phone") or member.get("mobile") or None,
+                "image": image if image else None,
+                "raw": member,
+                "pair_info": pair_info,
+            }
+
+            # Add other profile data if this is a pair
+            if pair_info.get("is_pair"):
+                other_profile_id = pair_info.get("other_profile_id")
+                if other_profile_id and other_profile_id in pair_profiles:
+                    result_item["other_profile"] = pair_profiles[other_profile_id]
+
+            result.append(result_item)
 
         return jsonify({"members": result})
     except Exception as e:
@@ -247,6 +334,58 @@ def get_member_history(member_id):
         return jsonify({"error": str(e)}), 400
 
     try:
+        # Detect pair relationship
+        try:
+            member_status = odoo.get_member_status(member_id)
+            pair_info = odoo.detect_pair_relationship(member_status)
+        except Exception as e:
+            logger.warning(f"Pair detection failed: {e}")
+            pair_info = {"is_pair": False}
+
+        # Build profile ID lists for different data types
+        # For pairs, data is stored differently:
+        # - Shifts: Only on master member profile
+        # - Counter events: Only on master member profile
+        # - Purchases: Master classical + Associated shopping profiles
+        # - Leaves: Both classical profiles (master + associated classical)
+
+        # Determine master member profile ID
+        if pair_info.get("is_pair"):
+            master_profile_id = pair_info["main_member_id"]
+            classical_profile_id = pair_info["classical_profile_id"]
+            shopping_profile_id = pair_info["shopping_profile_id"]
+        else:
+            master_profile_id = member_id
+            classical_profile_id = None
+            shopping_profile_id = None
+
+        # Shifts and counters: Only master member
+        shift_profile_ids = [master_profile_id]
+        counter_profile_ids = [master_profile_id]
+
+        # Purchases: Master classical + Associated shopping (if pair)
+        if pair_info.get("is_pair"):
+            purchase_profile_ids = [master_profile_id, shopping_profile_id]
+        else:
+            purchase_profile_ids = [member_id]
+
+        # Leaves: Both classical profiles (if pair)
+        if pair_info.get("is_pair"):
+            leave_profile_ids = [master_profile_id, classical_profile_id]
+        else:
+            leave_profile_ids = [member_id]
+
+        # Build profile_names dict for all relevant profiles (for display)
+        all_profile_ids = set(shift_profile_ids + purchase_profile_ids + leave_profile_ids + counter_profile_ids)
+        profile_names = {}
+        profile_barcodes = {}
+        for pid in all_profile_ids:
+            status = odoo.get_member_status(pid)
+            profile_names[pid] = status.get("name")
+            profile_barcodes[pid] = status.get("barcode_base")
+
+        logger.info(f"Fetching history - Shifts/Counters: {shift_profile_ids}, Purchases: {purchase_profile_ids}, Leaves: {leave_profile_ids}")
+
         # Fetch shift configuration from Odoo
         shift_config = odoo.get_shift_config()
 
@@ -278,24 +417,69 @@ def get_member_history(member_id):
         # Store adjusted config for use in event processing
         shift_config = adjusted_config
 
-        # Fetch member data with date filtering
-        purchases = odoo.get_member_purchase_history(member_id, start_date=start_date)
-        shifts = odoo.get_member_shift_history(member_id, start_date=start_date)
-        leaves = odoo.get_member_leaves(member_id, start_date=start_date)
-        counter_events = []
+        # Fetch history using appropriate profile IDs for each data type
+        all_purchases = []
+        all_shifts = []
+        all_leaves = []
+        all_counter_events = []
         holidays = []
 
-        try:
-            # Fetch ALL counter events (no date filter) for accurate running totals
-            counter_events = odoo.get_member_counter_events(member_id)
-        except Exception as counter_error:
-            logger.warning(
-                f"Error fetching counter events for member {member_id} (continuing without): {counter_error}",
-                exc_info=True,
-            )
+        # Fetch purchases (master classical + associated shopping for pairs)
+        for profile_id in purchase_profile_ids:
+            logger.info(f"Fetching purchases for profile {profile_id} ({profile_names.get(profile_id)})")
+            try:
+                purchases = odoo.get_member_purchase_history(profile_id, start_date=start_date)
+                for p in purchases:
+                    p["_profile_id"] = profile_id
+                all_purchases.extend(purchases)
+            except Exception as e:
+                logger.warning(f"Error fetching purchases for profile {profile_id}: {e}")
+
+        # Fetch shifts (only master member for pairs)
+        for profile_id in shift_profile_ids:
+            logger.info(f"Fetching shifts for profile {profile_id} ({profile_names.get(profile_id)})")
+            try:
+                shifts = odoo.get_member_shift_history(profile_id, start_date=start_date)
+                for s in shifts:
+                    s["_profile_id"] = profile_id
+                all_shifts.extend(shifts)
+            except Exception as e:
+                logger.warning(f"Error fetching shifts for profile {profile_id}: {e}")
+
+        # Fetch leaves (both classical profiles for pairs)
+        for profile_id in leave_profile_ids:
+            logger.info(f"Fetching leaves for profile {profile_id} ({profile_names.get(profile_id)})")
+            try:
+                leaves = odoo.get_member_leaves(profile_id, start_date=start_date)
+                for l in leaves:
+                    l["_profile_id"] = profile_id
+                all_leaves.extend(leaves)
+            except Exception as e:
+                logger.warning(f"Error fetching leaves for profile {profile_id}: {e}")
+
+        # Fetch counter events (only master member for pairs)
+        for profile_id in counter_profile_ids:
+            logger.info(f"Fetching counter events for profile {profile_id} ({profile_names.get(profile_id)})")
+            try:
+                # Fetch ALL counter events (no date filter) for accurate running totals
+                counter_events = odoo.get_member_counter_events(profile_id)
+                for c in counter_events:
+                    c["_profile_id"] = profile_id
+                all_counter_events.extend(counter_events)
+            except Exception as counter_error:
+                logger.warning(
+                    f"Error fetching counter events for profile {profile_id} (continuing without): {counter_error}",
+                    exc_info=True,
+                )
+
+        # Re-assign to original variable names for compatibility with existing code
+        purchases = all_purchases
+        shifts = all_shifts
+        leaves = all_leaves
+        counter_events = all_counter_events
 
         try:
-            # Fetch holidays for the date range
+            # Fetch holidays for the date range (only once)
             holidays = odoo.get_holidays(start_date=start_date, end_date=end_date)
         except Exception as holiday_error:
             logger.warning(
@@ -555,6 +739,7 @@ def get_member_history(member_id):
                         "date": purchase.get("date_order"),
                         "reference": purchase.get("pos_reference")
                         or purchase.get("name"),
+                        "_profile_id": purchase.get("_profile_id"),
                     }
                 )
 
@@ -607,6 +792,7 @@ def get_member_history(member_id):
                     "week_name": shift.get("week_name"),
                     "shift_type": shift_type,
                     "shift_type_id": shift_type_id,
+                    "_profile_id": shift.get("_profile_id"),
                 }
 
                 if shift_id and shift_id in shift_counter_map:
@@ -747,6 +933,7 @@ def get_member_history(member_id):
                             "leave_type": leave_type,
                             "leave_end": stop_date,  # Reference to end date
                             "leave_id": leave_id,
+                            "_profile_id": leave.get("_profile_id"),
                         }
                     )
 
@@ -760,6 +947,7 @@ def get_member_history(member_id):
                             "leave_type": leave_type,
                             "leave_start": start_date,  # Reference to start date
                             "leave_id": leave_id,
+                            "_profile_id": leave.get("_profile_id"),
                         }
                     )
 
@@ -790,6 +978,11 @@ def get_member_history(member_id):
                 "counter_totals": {
                     "ftop": int(final_ftop_total),
                     "standard": int(final_standard_total),
+                },
+                "pair_info": pair_info,
+                "profiles": {
+                    pid: {"id": pid, "name": profile_names[pid], "barcode_base": profile_barcodes[pid]}
+                    for pid in all_profile_ids
                 },
             }
         )

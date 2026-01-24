@@ -17,6 +17,7 @@ function App() {
   const [counterTotals, setCounterTotals] = useState(null)
   const [memberShares, setMemberShares] = useState(null)
   const [cycleConfig, setCycleConfig] = useState(null)
+  const [historyData, setHistoryData] = useState(null)
 
   // Use relative URLs if VITE_API_URL is undefined, otherwise use the provided URL
   const apiUrl = import.meta.env.VITE_API_URL !== undefined
@@ -106,10 +107,17 @@ function App() {
       setLeaves(historyData.leaves || [])
       setHolidays(historyData.holidays || [])
       setCounterTotals(historyData.counter_totals || null)
+      setHistoryData(historyData)  // Store full history data including pair_info and profiles
+
+      // Determine which member ID to use for status fetch
+      // For pairs, always use the master member's status (where shifts/counters are stored)
+      const statusMemberId = historyData?.pair_info?.is_pair
+        ? historyData.pair_info.main_member_id
+        : member.id
 
       // Fetch member status (optional - don't fail if this errors)
       try {
-        const statusResponse = await fetch(`${apiUrl}/api/member/${member.id}/status`)
+        const statusResponse = await fetch(`${apiUrl}/api/member/${statusMemberId}/status`)
         if (statusResponse.ok) {
           const statusData = await statusResponse.json()
           setMemberStatus(statusData)
@@ -430,6 +438,29 @@ function App() {
                               # {member.barcode_base}
                             </div>
                           )}
+
+                          {/* Pair Badge */}
+                          {member.pair_info?.is_pair && (
+                            <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-semibold text-purple-700">
+                                  👥 {t('pair.binome')}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {member.pair_info.pair_type === 'main' ? (
+                                  <>{t('pair.mainMember')} • {t('pair.sharedShifts')}</>
+                                ) : (
+                                  <>{t('pair.associatedMember')} • {t('pair.sharedShifts')}</>
+                                )}
+                              </div>
+                              {member.other_profile?.name && (
+                                <div className="text-xs text-purple-600 mt-1">
+                                  {t('pair.otherProfile')}: {member.other_profile.name}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -441,113 +472,201 @@ function App() {
             {selectedMember && (
               <div className="border-t-2 border-purple-200 pt-8 mt-8">
                 <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-6 mb-6">
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+                  {/* Title */}
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-4">
                     📊 {t('history.title', { name: selectedMember.name })}
                   </h2>
-                  <p className="text-purple-700 mb-3">{t('history.memberNumber')} {selectedMember.barcode_base}</p>
 
-                  {/* Shift Type */}
-                  {memberStatus && memberStatus.shift_type && (
-                    <p className="text-purple-700 mb-3">
-                      {memberStatus.shift_type === 'ftop' ? '⏱️' : '📅'}
-                      {' '}
-                      {memberStatus.shift_type === 'ftop' ? t('counter.ftop') : t('counter.standard')}
-                    </p>
+                  {/* Pair Members Section */}
+                  {historyData?.pair_info?.is_pair && historyData?.profiles && (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+                      <h3 className="font-semibold text-purple-900 mb-3">
+                        👥 {t('pair.pairMembers')}
+                      </h3>
+
+                      {Object.entries(historyData.profiles)
+                        .sort(([aId], [bId]) => {
+                          const aIdInt = parseInt(aId)
+                          const bIdInt = parseInt(bId)
+                          const mainId = historyData.pair_info.main_member_id
+                          const classicalId = historyData.pair_info.classical_profile_id
+                          const shoppingId = historyData.pair_info.shopping_profile_id
+
+                          // Main member first
+                          if (aIdInt === mainId) return -1
+                          if (bIdInt === mainId) return 1
+
+                          // Classical profile second
+                          if (aIdInt === classicalId) return -1
+                          if (bIdInt === classicalId) return 1
+
+                          // Shopping profile third
+                          if (aIdInt === shoppingId) return -1
+                          if (bIdInt === shoppingId) return 1
+
+                          return 0
+                        })
+                        .map(([profileId, profile]) => (
+                        <div key={profileId} className={`mb-2 p-2 rounded ${
+                          parseInt(profileId) === selectedMember?.id
+                            ? 'bg-white border-2 border-purple-400'
+                            : 'bg-purple-50/50'
+                        }`}>
+                          <div className="font-medium">{profile.name}</div>
+                          <div className="text-xs text-gray-600">
+                            {profile.barcode_base && `# ${profile.barcode_base} • `}
+                            {parseInt(profileId) === historyData.pair_info.classical_profile_id
+                              ? t('pair.classicalProfile')
+                              : parseInt(profileId) === historyData.pair_info.shopping_profile_id
+                              ? t('pair.shoppingProfile')
+                              : t('pair.mainMember')}
+                          </div>
+                        </div>
+                      ))}
+
+                      <p className="text-xs text-gray-600 mt-2">
+                        {t('pair.sharedObligations')}
+                      </p>
+                    </div>
                   )}
 
-                  {/* Member Status Badges */}
-                  {memberStatus && (
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {/* Cooperative State Badge */}
-                      {memberStatus.cooperative_state && (
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
-                          memberStatus.cooperative_state === 'up_to_date' ? 'bg-green-100 text-green-800 border border-green-300' :
-                          memberStatus.cooperative_state === 'alert' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                          memberStatus.cooperative_state === 'suspended' || memberStatus.cooperative_state === 'blocked' ? 'bg-red-100 text-red-800 border border-red-300' :
-                          memberStatus.cooperative_state === 'delay' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
-                          'bg-gray-100 text-gray-800 border border-gray-300'
-                        }`}>
-                          {memberStatus.cooperative_state === 'up_to_date' && '✓'}
-                          {memberStatus.cooperative_state === 'alert' && '⚠️'}
-                          {memberStatus.cooperative_state === 'suspended' && '🚫'}
-                          {memberStatus.cooperative_state === 'blocked' && '🚫'}
-                          {memberStatus.cooperative_state === 'delay' && '⏱️'}
-                          {' '}
-                          {t(`status.${memberStatus.cooperative_state}`)}
-                        </span>
+                  {/* Cards: Cooperative Info and Shift Attendance */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Card 1: Cooperative Information */}
+                    <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-purple-200">
+                      <h3 className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
+                        <span className="text-xl">🏪</span>
+                        <span>{t('member.cooperativeInfo') || 'Cooperative Information'}</span>
+                      </h3>
+                      <div className="space-y-3">
+                        {/* Member Number */}
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">🔢</span>
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">{t('history.memberNumber')}</div>
+                            <div className="text-lg font-bold text-purple-600">{selectedMember.barcode_base}</div>
+                          </div>
+                        </div>
+                        {/* Join Date and Shares */}
+                        {memberShares && memberShares.total_shares > 0 && (
+                          <>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">📅</span>
+                              <div>
+                                <div className="text-xs text-gray-500 font-medium">{t('member.joinDate')}</div>
+                                <div className="text-lg font-bold text-green-600">
+                                  {memberShares.join_date ? formatDate(memberShares.join_date) : t('member.firstPurchase')}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">💰</span>
+                              <div>
+                                <div className="text-xs text-gray-500 font-medium">{t('member.totalShares')}</div>
+                                <div className="text-lg font-bold text-blue-600">
+                                  {memberShares.total_shares} {t('member.shares')}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card 2: Shift & Attendance Information */}
+                    <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-200">
+                    <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                      <span className="text-xl">📋</span>
+                      <span>{t('member.shiftAttendance') || 'Shift & Attendance'}</span>
+                    </h3>
+                    <div className="space-y-3">
+                      {/* Shift Type */}
+                      {memberStatus && memberStatus.shift_type && (
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{memberStatus.shift_type === 'ftop' ? '⏱️' : '📅'}</span>
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">{t('member.shiftType') || 'Shift Type'}</div>
+                            <div className="text-lg font-bold text-purple-600">
+                              {memberStatus.shift_type === 'ftop' ? t('counter.ftop') : t('counter.standard')}
+                            </div>
+                          </div>
+                        </div>
                       )}
 
-                      {/* Shopping Privileges */}
-                      {memberStatus.customer !== undefined && (
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
-                          memberStatus.customer ? 'bg-green-100 text-green-800 border border-green-300' :
-                          'bg-gray-100 text-gray-800 border border-gray-300'
-                        }`}>
-                          {memberStatus.customer ? '🛒' : '🚫'}
-                          {' '}
-                          {memberStatus.customer ? t('status.canShop') : t('status.cannotShop')}
-                        </span>
+                      {/* Status Badges */}
+                      {memberStatus && (
+                        <div className="flex flex-wrap gap-2">
+                          {/* Cooperative State Badge */}
+                          {memberStatus.cooperative_state && (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                              memberStatus.cooperative_state === 'up_to_date' ? 'bg-green-100 text-green-800 border border-green-300' :
+                              memberStatus.cooperative_state === 'alert' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                              memberStatus.cooperative_state === 'suspended' || memberStatus.cooperative_state === 'blocked' ? 'bg-red-100 text-red-800 border border-red-300' :
+                              memberStatus.cooperative_state === 'delay' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                              'bg-gray-100 text-gray-800 border border-gray-300'
+                            }`}>
+                              {memberStatus.cooperative_state === 'up_to_date' && '✓'}
+                              {memberStatus.cooperative_state === 'alert' && '⚠️'}
+                              {memberStatus.cooperative_state === 'suspended' && '🚫'}
+                              {memberStatus.cooperative_state === 'blocked' && '🚫'}
+                              {memberStatus.cooperative_state === 'delay' && '⏱️'}
+                              {' '}
+                              {t(`status.${memberStatus.cooperative_state}`)}
+                            </span>
+                          )}
+
+                          {/* Shopping Privileges */}
+                          {memberStatus.customer !== undefined && (
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                              memberStatus.customer ? 'bg-green-100 text-green-800 border border-green-300' :
+                              'bg-gray-100 text-gray-800 border border-gray-300'
+                            }`}>
+                              {memberStatus.customer ? '🛒' : '🚫'}
+                              {' '}
+                              {memberStatus.customer ? t('status.canShop') : t('status.cannotShop')}
+                            </span>
+                          )}
+                        </div>
                       )}
-                     </div>
-                   )}
 
-                   {/* Join Date and Share Count */}
-                   {memberShares && memberShares.total_shares > 0 && (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                       <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-green-200">
-                         <div className="flex items-center gap-2">
-                           <span className="text-2xl">📅</span>
-                           <div>
-                             <div className="text-xs text-gray-500 font-medium">{t('member.joinDate')}</div>
-                             <div className="text-lg font-bold text-green-600">
-                               {memberShares.join_date ? formatDate(memberShares.join_date) : t('member.firstPurchase')}
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                       <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-200">
-                         <div className="flex items-center gap-2">
-                           <span className="text-2xl">💰</span>
-                           <div>
-                             <div className="text-xs text-gray-500 font-medium">{t('member.totalShares')}</div>
-                             <div className="text-lg font-bold text-blue-600">
-                               {memberShares.total_shares} {t('member.shares')}
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-                   )}
+                      {/* Standard Shifts Count */}
+                      {memberStatus && memberStatus.shift_type === 'standard' && cycleConfig && (
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">📊</span>
+                          <div>
+                            <div className="text-xs text-gray-500 font-medium">{t('member.recentAttendance') || 'Recent Attendance'}</div>
+                            <div className="text-lg font-bold text-indigo-600">
+                              {(() => {
+                                const today = new Date().toISOString().split('T')[0]
+                                const currentCycleInfo = getCycleAndWeekForDate(today)
+                                if (!currentCycleInfo) return null
 
-                   {/* Standard Shifts Count */}
-                  {memberStatus && memberStatus.shift_type === 'standard' && cycleConfig && (
-                    <p className="text-purple-700 mt-3">
-                      {(() => {
-                        const today = new Date().toISOString().split('T')[0]
-                        const currentCycleInfo = getCycleAndWeekForDate(today)
-                        if (!currentCycleInfo) return null
+                                const currentCycleNumber = currentCycleInfo.cycleNumber
+                                const startCycleNumber = currentCycleNumber - 13
 
-                        const currentCycleNumber = currentCycleInfo.cycleNumber
-                        const startCycleNumber = currentCycleNumber - 13
+                                const count = historyEvents.filter(event => {
+                                  if (event.type !== 'shift' || event.shift_type !== 'standard') return false
+                                  const isAttended = event.state === 'done' || event.is_late === true || event.state === 'excused'
+                                  if (!isAttended) return false
+                                  const eventCycleInfo = getCycleAndWeekForDate(event.date)
+                                  if (!eventCycleInfo) return false
+                                  return eventCycleInfo.cycleNumber < currentCycleNumber &&
+                                         eventCycleInfo.cycleNumber >= startCycleNumber
+                                }).length
 
-                        const count = historyEvents.filter(event => {
-                          if (event.type !== 'shift' || event.shift_type !== 'standard') return false
-                          const isAttended = event.state === 'done' || event.is_late === true || event.state === 'excused'
-                          if (!isAttended) return false
-                          const eventCycleInfo = getCycleAndWeekForDate(event.date)
-                          if (!eventCycleInfo) return false
-                          return eventCycleInfo.cycleNumber < currentCycleNumber &&
-                                 eventCycleInfo.cycleNumber >= startCycleNumber
-                        }).length
-
-                        return `📅 ${count} ${t('history.shiftsInLast13Cycles')}`
-                      })()}
-                    </p>
-                  )}
+                                return `${count} ${t('history.shiftsInLast13Cycles')}`
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    </div>
+                  </div>
 
                   {/* Counter Summary Widget */}
                   {counterTotals && (
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {(() => {
                         // Use counter totals from API response
                         const latestFtopTotal = counterTotals.ftop ?? 0
@@ -783,6 +902,13 @@ function App() {
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
                                           <span className="font-semibold text-gray-900">{getEventTitle()}</span>
+                                          {/* Pair Attribution Badge - only for leaves */}
+                                          {historyData?.pair_info?.is_pair && event._profile_id && historyData?.profiles &&
+                                           (event.type === 'leave_start' || event.type === 'leave_end') && (
+                                            <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md font-medium">
+                                              👤 {historyData.profiles[event._profile_id]?.name}
+                                            </span>
+                                          )}
                                           {event.shift_type === 'unknown' && (
                                             <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
                                               ⚠️ {t('timeline.shiftTypeWarning')}
@@ -806,15 +932,17 @@ function App() {
                                         </div>
                                         <span className="text-sm text-purple-600 font-medium">{formatDate(event.date)}</span>
                                       </div>
-                                      {event.type === 'purchase' && event.reference && (
-                                        <div className="text-xs text-gray-500">
-                                          {t('timeline.reference')}: {event.reference}
+                                      {event.type === 'purchase' && historyData?.pair_info?.is_pair && event._profile_id && historyData?.profiles && (
+                                        <div className="flex items-center gap-3 mt-1">
+                                          <div className="text-xs text-purple-700 font-medium">
+                                            🛒 {historyData.profiles[event._profile_id]?.name}
+                                          </div>
                                         </div>
                                       )}
                                       {(event.type === 'leave_start' || event.type === 'leave_end') && (
                                         <div className="text-sm text-gray-700 mt-2">
                                           <div className="flex items-center justify-between gap-2 mb-2">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                               <span className="font-medium">{t('timeline.leaveType')}:</span>
                                               <span className="font-semibold text-yellow-800">{event.leave_type || 'N/A'}</span>
                                             </div>
