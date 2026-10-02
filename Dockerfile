@@ -34,6 +34,15 @@ COPY backend/ ./
 # Copy built frontend from builder stage
 COPY --from=frontend-builder /app/frontend/dist ./static
 
+# Update the list of packages, install minimal packages
+RUN  apt-get update \
+    && apt-get install --no-install-recommends -y \
+    apt-utils \
+    curl
+# Clean apt to minimize size of image
+RUN  apt-get clean
+RUN  rm -rf /var/lib/apt/lists/*
+
 # Expose port
 EXPOSE 5001
 
